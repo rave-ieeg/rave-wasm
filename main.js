@@ -115,6 +115,22 @@ async function createWindow() {
   // Start local server
   const port = await createLocalServer();
   
+  // Determine icon path based on platform and available files
+  let iconPath = null;
+  const iconPaths = [
+    path.join(__dirname, 'site', 'icon.png'),
+    path.join(__dirname, 'site', 'favicon.png'),
+    path.join(__dirname, 'assets', 'favicon.ico'),
+    path.join(__dirname, 'site', 'favicon.ico')
+  ];
+  
+  for (const testPath of iconPaths) {
+    if (fs.existsSync(testPath)) {
+      iconPath = testPath;
+      break;
+    }
+  }
+  
   mainWindow = new BrowserWindow({
     width: width,
     height: height,
@@ -125,7 +141,7 @@ async function createWindow() {
       webSecurity: false, // Allow external URLs and service workers
       allowRunningInsecureContent: false
     },
-    icon: path.join(__dirname, 'site', 'icon.png') // Optional: add an icon if you have one
+    ...(iconPath && { icon: iconPath })
   });
 
   // Load from local HTTP server instead of file:// protocol
