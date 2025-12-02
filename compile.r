@@ -80,7 +80,11 @@ apps <- lapply(app_names, function(app_name) {
 app_table <- do.call("rbind", apps)
 
 ul_html <- shiny::tags$ul(lapply(apps, function(item) {
-  shiny::tags$li(shiny::a(item$title, href = sprintf("%s/index.html", item$id)))
+  shiny::tags$li(shiny::a(
+    item$title,
+    href = sprintf("%s/index.html", item$id),
+    target = "_blank"
+  ))
 }))
 
 # save index.html
@@ -97,25 +101,18 @@ index_html <- bslib_page_template(
 htmltools::save_html(index_html, "site/index.html")
 
 
-launcher_html <- shiny::fillPage(
-  padding = 0,
-  title = "RAVE Portable",
-  bootstrap = FALSE,
-  shiny::tags$iframe(id = "app-frame", src = "freesurfer-viewer/index.html", style = "width:100%; height:100vh; border:none; margin:0!important; padding:0!important;"),
-  shiny::tags$script(HTML(
-    sprintf(
-      '
-    const apps = %s;
-    // Add navigation logic here
-  ',
-      jsonlite::toJSON(app_table, auto_unbox = TRUE, dataframe = "rows")
-    )
-  ))
-)
-
-htmltools::save_html(launcher_html, "site/launcher.html")
-
 # copy the static folders
-# file.copy("static/", "site/", recursive = TRUE)
-
+assets <- list.files(
+  "assets",
+  all.files = FALSE,
+  full.names = FALSE,
+  recursive = TRUE,
+  include.dirs = FALSE
+)
+lapply(assets, function(f) {
+  src <- file.path("assets", f)
+  dst <- file.path("site", f)
+  dir.create(dirname(dst), showWarnings = FALSE, recursive = TRUE)
+  file.copy(from = src, to = dst, overwrite = FALSE, recursive = FALSE)
+})
 # httpuv::runStaticServer("site")

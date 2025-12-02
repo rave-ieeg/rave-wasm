@@ -5,3 +5,8 @@
 .DS_Store
 site
 server/mongoose.exe
+
+# Electron
+node_modules/
+dist/
+*.log
