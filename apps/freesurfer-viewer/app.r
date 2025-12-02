@@ -35,7 +35,7 @@ ui <- bslib_page_template(
         label = "Imaging folder/file",
         after_content = "T1 MRI or FreeSurfer directory",
         size = "s",
-        maxSize = 200 * 1024^2,
+        maxSize = 50 * 1024^2,
         width = "100%"
       )
     ),
@@ -99,10 +99,10 @@ server <- function(input, output, session) {
     }
     message("Setting electrodes in coordinate system: ", coord_sys)
     local_data$brain$set_electrodes(local_data$coord_table, coord_sys = coord_sys)
+    local_data$brain$set_electrode_values()
+    
     value_table <- local_data$value_table
-    if(!is.data.frame(value_table) || !nrow(value_table)) {
-      local_data$brain$set_electrode_values()
-    } else {
+    if(is.data.frame(value_table) && nrow(value_table)) {
       message("Setting electrode values")
       print(value_table)
       local_data$brain$set_electrode_values(value_table)

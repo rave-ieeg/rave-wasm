@@ -82,8 +82,8 @@ app_table <- do.call("rbind", apps)
 ul_html <- shiny::tags$ul(lapply(apps, function(item) {
   shiny::tags$li(shiny::a(
     item$title,
-    href = sprintf("%s/index.html", item$id),
-    target = "_blank"
+    href = sprintf("%s/index.html", item$id)
+    # target = "_blank"
   ))
 }))
 
