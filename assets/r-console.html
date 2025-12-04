@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:*">
+  <title>R Console - RAVE Installation</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: #2d2d30;
+      padding: 12px 20px;
+      border-bottom: 1px solid #3e3e42;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #cccccc;
+    }
+
+    .status {
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 4px;
+      background: #007acc;
+      color: white;
+    }
+
+    .status.running {
+      background: #4caf50;
+    }
+
+    .status.completed {
+      background: #007acc;
+    }
+
+    .status.error {
+      background: #f44336;
+    }
+
+    .console {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .log-line {
+      margin-bottom: 4px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .log-line.stdout {
+      color: #d4d4d4;
+    }
+
+    .log-line.stderr {
+      color: #f48771;
+    }
+
+    .log-line.info {
+      color: #4ec9b0;
+    }
+
+    .log-line.success {
+      color: #4caf50;
+      font-weight: bold;
+    }
+
+    .log-line.error {
+      color: #f44336;
+      font-weight: bold;
+    }
+
+    /* ANSI color classes */
+    .ansi-black { color: #000000; }
+    .ansi-red { color: #cd3131; }
+    .ansi-green { color: #0dbc79; }
+    .ansi-yellow { color: #e5e510; }
+    .ansi-blue { color: #2472c8; }
+    .ansi-magenta { color: #bc3fbc; }
+    .ansi-cyan { color: #11a8cd; }
+    .ansi-white { color: #e5e5e5; }
+    .ansi-bright-black { color: #666666; }
+    .ansi-bright-red { color: #f14c4c; }
+    .ansi-bright-green { color: #23d18b; }
+    .ansi-bright-yellow { color: #f5f543; }
+    .ansi-bright-blue { color: #3b8eea; }
+    .ansi-bright-magenta { color: #d670d6; }
+    .ansi-bright-cyan { color: #29b8db; }
+    .ansi-bright-white { color: #ffffff; }
+    .ansi-bold { font-weight: bold; }
+    .ansi-dim { opacity: 0.7; }
+    .ansi-italic { font-style: italic; }
+    .ansi-underline { text-decoration: underline; }
+
+    .footer {
+      background: #2d2d30;
+      padding: 12px 20px;
+      border-top: 1px solid #3e3e42;
+      text-align: center;
+      font-size: 12px;
+      color: #858585;
+    }
+
+    .close-btn {
+      padding: 6px 16px;
+      background: #0e639c;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .close-btn:hover {
+      background: #1177bb;
+    }
+
+    .close-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">R Console - RAVE Installation</div>
+    <div class="status" id="status">Initializing...</div>
+  </div>
+
+  <div class="console" id="console"></div>
+
+  <div class="footer">
+    <button class="close-btn" id="close-btn" disabled>Close Window</button>
+  </div>
+
+  <script>
+    const { r } = window.electron;
+    const consoleEl = document.getElementById('console');
+    const statusEl = document.getElementById('status');
+    const closeBtn = document.getElementById('close-btn');
+
+    let autoScroll = true;
+
+    // Parse ANSI escape codes and convert to HTML spans with classes
+    function parseAnsi(text) {
+      const ansiRegex = /\x1b\[(\d+(?:;\d+)*)m/g;
+      const parts = [];
+      let lastIndex = 0;
+      let currentClasses = [];
+      
+      let match;
+      while ((match = ansiRegex.exec(text)) !== null) {
+        // Add text before this escape code
+        if (match.index > lastIndex) {
+          const textContent = text.substring(lastIndex, match.index);
+          if (textContent) {
+            parts.push({ text: textContent, classes: [...currentClasses] });
+          }
+        }
+        
+        // Parse the escape code
+        const codes = match[1].split(';').map(Number);
+        for (const code of codes) {
+          if (code === 0) {
+            // Reset
+            currentClasses = [];
+          } else if (code === 1) {
+            currentClasses.push('ansi-bold');
+          } else if (code === 2) {
+            currentClasses.push('ansi-dim');
+          } else if (code === 3) {
+            currentClasses.push('ansi-italic');
+          } else if (code === 4) {
+            currentClasses.push('ansi-underline');
+          } else if (code >= 30 && code <= 37) {
+            // Foreground colors
+            const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
+            currentClasses = currentClasses.filter(c => !c.startsWith('ansi-') || c.includes('bold') || c.includes('dim') || c.includes('italic') || c.includes('underline'));
+            currentClasses.push(`ansi-${colors[code - 30]}`);
+          } else if (code >= 90 && code <= 97) {
+            // Bright foreground colors
+            const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
+            currentClasses = currentClasses.filter(c => !c.startsWith('ansi-') || c.includes('bold') || c.includes('dim') || c.includes('italic') || c.includes('underline'));
+            currentClasses.push(`ansi-bright-${colors[code - 90]}`);
+          }
+        }
+        
+        lastIndex = match.index + match[0].length;
+      }
+      
+      // Add remaining text
+      if (lastIndex < text.length) {
+        const textContent = text.substring(lastIndex);
+        if (textContent) {
+          parts.push({ text: textContent, classes: [...currentClasses] });
+        }
+      }
+      
+      return parts;
+    }
+
+    function addLog(message, type = 'stdout') {
+      const line = document.createElement('div');
+      line.className = `log-line ${type}`;
+      
+      // Parse ANSI codes and create spans
+      const parts = parseAnsi(message);
+      if (parts.length === 0) {
+        line.textContent = message;
+      } else {
+        for (const part of parts) {
+          if (part.classes.length > 0) {
+            const span = document.createElement('span');
+            span.className = part.classes.join(' ');
+            span.textContent = part.text;
+            line.appendChild(span);
+          } else {
+            line.appendChild(document.createTextNode(part.text));
+          }
+        }
+      }
+      
+      consoleEl.appendChild(line);
+      
+      if (autoScroll) {
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      }
+    }
+
+    function setStatus(text, className) {
+      statusEl.textContent = text;
+      statusEl.className = `status ${className}`;
+    }
+
+    // Detect manual scrolling
+    consoleEl.addEventListener('scroll', () => {
+      const isAtBottom = Math.abs(consoleEl.scrollHeight - consoleEl.scrollTop - consoleEl.clientHeight) < 50;
+      autoScroll = isAtBottom;
+    });
+
+    closeBtn.addEventListener('click', () => {
+      window.close();
+    });
+
+    // Start displaying output and trigger installation
+    window.addEventListener('load', async () => {
+      try {
+        addLog('===== RAVE Installation Console =====', 'info');
+        addLog('Following instructions from https://rave.wiki/posts/installation/installation.html', 'info');
+        addLog('', 'stdout');
+        
+        setStatus('Initializing...', 'running');
+        
+        // The sessionId will be passed via URL query parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('sessionId');
+        
+        if (!sessionId) {
+          addLog('ERROR: No session ID provided', 'error');
+          setStatus('Error', 'error');
+          closeBtn.disabled = false;
+          return;
+        }
+
+        addLog(`R session ID: ${sessionId}`, 'info');
+        addLog('', 'stdout');
+
+        // Step 1: Listen for output events FIRST
+        window.electron.r.onConsoleOutput((data) => {
+          if (data.sessionId === sessionId) {
+            addLog(data.message, data.type);
+          }
+        });
+
+        // Step 2: Register for console output
+        addLog('Registering console output handler...', 'info');
+        await window.electron.r.registerConsoleOutput(sessionId);
+        
+        // Step 3: Trigger the installation
+        setStatus('Installing...', 'running');
+        addLog('Starting RAVE installation...', 'info');
+        addLog('This may take several minutes depending on your internet connection.', 'info');
+        addLog('', 'stdout');
+        
+        const installResult = await window.electron.r.executeRAVEInstall(sessionId);
+        
+        addLog('', 'stdout');
+        if (installResult.success || (installResult.data && installResult.data.success)) {
+          addLog('===== Installation Completed Successfully =====', 'success');
+          setStatus('Completed', 'completed');
+        } else {
+          addLog('===== Installation Failed =====', 'error');
+          addLog(`Error: ${installResult.error || installResult.data?.error || 'Unknown error'}`, 'error');
+          setStatus('Failed', 'error');
+        }
+        
+        closeBtn.disabled = false;
+        addLog('', 'stdout');
+        addLog('You can now close this window.', 'info');
+        
+      } catch (err) {
+        addLog('', 'stdout');
+        addLog('===== Installation Error =====', 'error');
+        addLog(`Error: ${err.message}`, 'error');
+        setStatus('Error', 'error');
+        closeBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

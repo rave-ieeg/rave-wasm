@@ -1,6 +1,6 @@
 {
   "name": "rave-wasm-electron",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Electron app for RAVE WASM",
   "main": "main.js",
   "scripts": {
@@ -41,7 +41,9 @@
     "files": [
       "main.js",
       "preload.js",
-      "site/**/*"
+      "src/**/*",
+      "site/**/*",
+      "assets/**/*"
     ],
     "mac": {
       "icon": "site/favicon.icns",

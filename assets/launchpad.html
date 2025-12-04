@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:*">
+  <title>RAVE Widgets Launcher</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      color: #333;
+    }
+
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      padding: 50px;
+      max-width: 800px;
+      width: 90%;
+    }
+
+    h1 {
+      font-size: 28px;
+      margin-bottom: 10px;
+      color: #667eea;
+      text-align: center;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #888;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .status {
+      background: #f5f5f5;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 25px;
+    }
+
+    .status-label {
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .status-content {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ddd;
+    }
+
+    .status-indicator.active {
+      background: #4caf50;
+      box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+    }
+
+    .status-text {
+      font-size: 14px;
+      color: #333;
+      flex: 1;
+    }
+
+    .status-version {
+      font-size: 12px;
+      color: #888;
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .launch-btn {
+      padding: 16px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-align: center;
+    }
+
+    .launch-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .launch-btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .launch-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-secondary {
+      background: #4caf50;
+      color: white;
+    }
+
+    .btn-link {
+      background: transparent;
+      color: #667eea;
+      border: 2px solid #667eea;
+      padding: 12px 24px;
+      font-size: 14px;
+    }
+
+    .btn-link:hover:not(:disabled) {
+      background: #667eea;
+      color: white;
+    }
+
+    .divider {
+      height: 1px;
+      background: #e0e0e0;
+      margin: 20px 0;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 12px;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>RAVE Launchpad</h1>
+    <p class="subtitle">Choose how to launch your application</p>
+
+    <div class="button-group">
+        <button class="launch-btn btn-secondary" id="btn-r-shiny" disabled>
+            Open RAVE server locally (requires R)
+        </button>
+        <button class="launch-btn btn-primary" id="btn-wasm">
+          Open Portable Widgets (no installation required)
+        </button>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="status">
+      <div class="status-label">R Environment</div>
+      <div class="status-content">
+        <div class="status-indicator" id="r-indicator"></div>
+        <div class="status-text">
+          <div id="r-status-text">Detecting R...</div>
+          <div class="status-version" id="r-version"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="status-label" style="margin-bottom: 12px;">R Configuration</div>
+    <button class="launch-btn btn-link" id="btn-set-r-path">
+      Set R Path Manually
+    </button>
+    <button class="launch-btn btn-link" id="btn-install-rave" style="margin-top: 12px;">
+      Install/Update RAVE Packages
+    </button>
+
+    <div class="footer" id="app-version">
+      RAVE Widgets v...
+    </div>
+  </div>
+
+  <script>
+    // Get Electron APIs from preload
+    const { r, launchpad, getAppVersion } = window.electron;
+
+    // DOM elements
+    const rIndicator = document.getElementById('r-indicator');
+    const rStatusText = document.getElementById('r-status-text');
+    const rVersion = document.getElementById('r-version');
+    const btnWasm = document.getElementById('btn-wasm');
+    const btnRShiny = document.getElementById('btn-r-shiny');
+    const btnSetRPath = document.getElementById('btn-set-r-path');
+    const btnInstallRave = document.getElementById('btn-install-rave');
+    const appVersionElement = document.getElementById('app-version');
+
+    // Load app version
+    getAppVersion().then(version => {
+      appVersionElement.textContent = `RAVE Widgets v${version}`;
+    }).catch(err => {
+      console.error('Failed to get app version:', err);
+      appVersionElement.textContent = 'RAVE Widgets';
+    });
+
+    // Update R status display
+    function updateRStatus(status) {
+      console.log('Updating R status:', status);
+      if (status.detected) {
+        rIndicator.classList.add('active');
+        rStatusText.textContent = 'R Detected';
+        
+        // Build version string with package info
+        let versionText = `Version: ${status.version || 'unknown'}`;
+        
+        if (status.packages) {
+          const packages = [];
+          if (status.packages.rave) {
+            packages.push(`rave: ${status.packages.rave}`);
+          }
+          if (status.packages.ravemanager) {
+            packages.push(`ravemanager: ${status.packages.ravemanager}`);
+          }
+          
+          if (packages.length > 0) {
+            versionText += ` | ${packages.join(', ')}`;
+          } else {
+            versionText += ` | RAVE packages: not installed`;
+          }
+        }
+        
+        versionText += ` | Path: ${status.path}`;
+        rVersion.textContent = versionText;
+        
+        // Only enable R Shiny button if RAVE package is installed
+        btnRShiny.disabled = !status.packages || !status.packages.rave;
+        
+        // Enable install button when R is detected
+        btnInstallRave.disabled = false;
+        
+        // Update button text based on whether RAVE is installed
+        if (!status.packages || !status.packages.rave) {
+          btnInstallRave.textContent = 'Install RAVE Packages';
+        } else {
+          btnInstallRave.textContent = 'Update RAVE Packages';
+        }
+      } else {
+        rIndicator.classList.remove('active');
+        rStatusText.textContent = 'R Not Detected';
+        rVersion.textContent = 'Click "Set R Path Manually" to configure R';
+        btnRShiny.disabled = true;
+        btnInstallRave.disabled = true;
+        btnInstallRave.textContent = 'Install RAVE Packages (R required)';
+      }
+    }
+
+    // Listen for R status changes first
+    launchpad.onRStatusChanged((status) => {
+      console.log('Received R status change event:', status);
+      updateRStatus(status);
+      
+      // Re-enable install button after installation completes
+      if (btnInstallRave.textContent.includes('Installing') || btnInstallRave.textContent.includes('check console')) {
+        btnInstallRave.disabled = status.detected;
+        if (!status.packages || !status.packages.rave) {
+          btnInstallRave.textContent = 'Install RAVE Packages';
+        } else {
+          btnInstallRave.textContent = 'Update RAVE Packages';
+        }
+      }
+    });
+
+    // Then do initial status check
+    r.getStatus().then((result) => {
+      console.log('Initial R status:', result);
+      if (result.success && result.data) {
+        updateRStatus(result.data);
+      } else if (result.success) {
+        updateRStatus(result);
+      }
+    }).catch(err => {
+      console.error('Failed to get R status:', err);
+    });
+
+    // Launch WASM app
+    btnWasm.addEventListener('click', async () => {
+      btnWasm.disabled = true;
+      btnWasm.textContent = 'Launching...';
+      
+      try {
+        await launchpad.openApp('wasm');
+      } catch (err) {
+        console.error('Failed to launch WASM app:', err);
+        await launchpad.showAlert({
+          type: 'error',
+          title: 'Launch Failed',
+          message: 'Failed to launch WASM app',
+          detail: err.message
+        });
+      } finally {
+        btnWasm.disabled = false;
+        btnWasm.textContent = 'Open Portable Widgets (no installation required)';
+      }
+    });
+
+    // Launch R Shiny app (RAVE)
+    btnRShiny.addEventListener('click', async () => {
+      btnRShiny.disabled = true;
+      btnRShiny.textContent = 'Starting RAVE...';
+      
+      try {
+        const result = await launchpad.openApp('r-shiny');
+        console.log('RAVE launch result:', result);
+      } catch (err) {
+        console.error('Failed to launch RAVE app:', err);
+        await launchpad.showAlert({
+          type: 'error',
+          title: 'Launch Failed',
+          message: 'Failed to launch RAVE app',
+          detail: err.message
+        });
+      } finally {
+        const statusResult = await r.getStatus();
+        const status = statusResult.success ? statusResult.data : statusResult;
+        btnRShiny.disabled = !status.detected || !status.packages || !status.packages.rave;
+        btnRShiny.textContent = 'Open RAVE server locally (requires R)';
+      }
+    });
+
+    // Set R path manually
+    btnSetRPath.addEventListener('click', async () => {
+      try {
+        const result = await launchpad.selectRPath();
+        console.log('Select R path result:', result);
+        
+        // Only update if explicitly successful
+        if (result.success === true) {
+          // Valid R path - refresh status from server
+          const statusResult = await r.getStatus();
+          const status = statusResult.success ? statusResult.data : statusResult;
+          if (status && status.detected) {
+            updateRStatus(status);
+          }
+        } else if (result.error) {
+          // Invalid R path - show alert
+          await launchpad.showAlert({
+            type: 'error',
+            title: 'Invalid R Path',
+            message: 'Invalid R executable',
+            detail: result.error
+          });
+        }
+        // If result.success is false and no error, user cancelled the dialog
+      } catch (err) {
+        console.error('Failed to set R path:', err);
+        await launchpad.showAlert({
+          type: 'error',
+          title: 'Error',
+          message: 'An unexpected error occurred',
+          detail: err.message
+        });
+      }
+    });
+
+    // Install RAVE packages
+    btnInstallRave.addEventListener('click', async () => {
+      console.log('[Install] Button clicked!');
+      const confirmResult = await launchpad.showConfirm({
+        type: 'question',
+        title: 'Install/Update RAVE Packages',
+        message: 'This will install/update RAVE packages following the instructions from rave.wiki.',
+        detail: 'All existing R sessions will be terminated.\n\nAn R console window will open showing the installation progress. This may take several minutes.\n\nContinue?',
+        buttons: ['Continue', 'Cancel'],
+        defaultId: 0,
+        cancelId: 1
+      });
+      console.log('[Install] Confirm dialog result:', confirmResult);
+      const response = confirmResult.data?.response ?? confirmResult.response;
+      if (response !== 0) {
+        console.log('[Install] User cancelled');
+        return;
+      }
+      
+      console.log('[Install] Starting installation process...');
+      btnInstallRave.disabled = true;
+      btnInstallRave.textContent = 'Preparing installation...';
+      
+      try {
+        // Step 1: Create R session and get session ID
+        console.log('[Install] Step 1: Creating R session...');
+        const result = await r.installRAVE();
+        console.log('[Install] Install session result:', result);
+        
+        if (!result.success || !result.data || !result.data.sessionId) {
+          const error = result.error || result.data?.error || 'Failed to create installation session';
+          await launchpad.showAlert({
+            type: 'error',
+            title: 'Installation Failed',
+            message: 'Failed to start installation',
+            detail: error
+          });
+          btnInstallRave.disabled = false;
+          const statusResult = await r.getStatus();
+          if (statusResult.success) {
+            const status = statusResult.data || statusResult;
+            if (!status.packages || !status.packages.rave) {
+              btnInstallRave.textContent = 'Install RAVE Packages';
+            } else {
+              btnInstallRave.textContent = 'Update RAVE Packages';
+            }
+          }
+          return;
+        }
+        
+        const sessionId = result.data.sessionId;
+        console.log('[Install] Step 2: Opening R console window with sessionId:', sessionId);
+        
+        // Step 2: Open R console window with session ID as query param
+        const consoleResult = await launchpad.openRConsole(sessionId);
+        console.log('[Install] R console window result:', consoleResult);
+        
+        // Give console window a moment to load and register listeners
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Installation will be triggered automatically by console window
+        // Just wait here and update status when done
+        btnInstallRave.textContent = 'Installing (check console window)...';
+        console.log('[Install] Installation window opened successfully');
+        
+      } catch (err) {
+        console.error('[Install] Failed to install RAVE:', err);
+        console.error('[Install] Error stack:', err.stack);
+        await launchpad.showAlert({
+          type: 'error',
+          title: 'Installation Failed',
+          message: 'Failed to install RAVE packages',
+          detail: err.message
+        });
+        btnInstallRave.disabled = false;
+        const statusResult = await r.getStatus();
+        if (statusResult.success) {
+          updateRStatus(statusResult.data || statusResult);
+        }
+      }
+    });
+  </script>
+</body>
+</html>
