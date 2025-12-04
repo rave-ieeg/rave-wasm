@@ -10,3 +10,4 @@ server/mongoose.exe
 node_modules/
 dist/
 *.log
+.env
