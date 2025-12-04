@@ -95,7 +95,15 @@ index_html <- bslib_page_template(
   sidebar = NULL,
   window_title = "RAVE (portable version)",
   fluid = FALSE,
-  ul_html
+  shiny::div(
+    style = "min-height: 15px"
+  ),
+  shiny::fluidRow(
+    shiny::column(
+      width = 12L,
+      ul_html
+    )
+  )
 )
 
 htmltools::save_html(index_html, "site/index.html")

@@ -129,7 +129,7 @@ bslib_page_template <- function(module_id, module_title, sidebar,
   }
   if(module_id == "home") {
     bslib::page_navbar(
-      title = shiny::a("RAVE", target = "_blank", href = "https://rave.wiki"), 
+      title = shiny::a("RAVE Portable Widgets", target = "_blank", href = "https://rave.wiki"), 
       fillable = TRUE,
       fillable_mobile = FALSE,
       theme = bslib_theme(),
@@ -145,7 +145,7 @@ bslib_page_template <- function(module_id, module_title, sidebar,
     )
   } else {
     bslib::page_navbar(
-      title = shiny::a("RAVE", target = "_blank", href = "https://rave.wiki"), 
+      title = shiny::a("RAVE Portable Widgets", target = "_blank", href = "https://rave.wiki"), 
       fillable = TRUE,
       fillable_mobile = FALSE,
       theme = bslib_theme(),
