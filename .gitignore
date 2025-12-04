@@ -5,12 +5,11 @@
 .DS_Store
 site
 server/mongoose.exe
-
 # Symlinks created by compile.r
 apps/*/www
-
 # Electron
 node_modules/
 dist/
 *.log
 .env
+tmp_www

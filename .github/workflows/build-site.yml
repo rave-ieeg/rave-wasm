@@ -31,7 +31,6 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           set -eux
-          brew update
           brew install openssl libxml2 jq fftw hdf5 pkg-config cmake libpng
 
       - name: Install system dependencies (apt on Linux)

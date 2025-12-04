@@ -125,14 +125,15 @@ index_html <- bslib_page_template(
 htmltools::save_html(index_html, "site/index.html")
 
 
-# copy the static folders
+# copy the static folders (include hidden files like .nojekyll)
 assets <- list.files(
   "assets",
-  all.files = FALSE,
+  all.files = TRUE,
   full.names = FALSE,
   recursive = TRUE,
   include.dirs = FALSE
 )
+assets <- assets[!assets %in% c(".", "..")]
 lapply(assets, function(f) {
   src <- file.path("assets", f)
   dst <- file.path("site", f)
