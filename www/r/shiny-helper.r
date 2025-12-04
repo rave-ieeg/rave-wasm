@@ -178,94 +178,57 @@ wasm_download_button <- function(inputId, label, ..., style = NULL) {
     ...
   )
   
-  # Load StreamSaver.js library
-  streamsaver_script <- shiny::tags$script(src = "www/streamsaver/StreamSaver.js")
-  
-  # JavaScript handler for chunked download with StreamSaver
+  # JavaScript handler for chunked download
   js_code <- shiny::tags$script(shiny::HTML(sprintf("
     (function() {
       if (!window._wasmDownloadHandlerInitialized) {
         window._wasmDownloadHandlerInitialized = true;
-        window._wasmDownloadStreams = {};
+        window._wasmDownloadChunks = {};
         
-        // Configure StreamSaver.js
-        if (typeof streamSaver !== 'undefined') {
-          // Set mitm URL relative to www directory
-          streamSaver.mitm = 'www/streamsaver/mitm.html';
-        }
-        
-        Shiny.addCustomMessageHandler('wasmDownloadChunk', async function(message) {
+        Shiny.addCustomMessageHandler('wasmDownloadChunk', function(message) {
           try {
             const downloadId = message.filename || 'download';
             
-            // Initialize stream on first chunk
+            // Initialize chunks array for this download
             if (message.chunk_index === 1) {
-              if (typeof streamSaver === 'undefined') {
-                throw new Error('StreamSaver.js not loaded. Falling back to memory-based download.');
-              }
-              
-              // Create writable stream
-              const fileStream = streamSaver.createWriteStream(message.filename, {
-                size: message.filesize
-              });
-              
-              const writer = fileStream.getWriter();
-              window._wasmDownloadStreams[downloadId] = writer;
+              window._wasmDownloadChunks[downloadId] = [];
             }
             
-            // Get stream writer
-            const writer = window._wasmDownloadStreams[downloadId];
-            
-            if (!writer) {
-              throw new Error('Stream not initialized for ' + downloadId);
+            // Decode base64 chunk to Uint8Array
+            const binaryString = atob(message.chunk);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
             }
             
-            // Decode base64 chunk to Uint8Array and write to stream
-            if (message.chunk && message.chunk.length > 0) {
-              const binaryString = atob(message.chunk);
-              const len = binaryString.length;
-              const bytes = new Uint8Array(len);
-              for (let i = 0; i < len; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-              
-              // Write chunk directly to disk via stream
-              await writer.write(bytes);
-            }
+            // Accumulate chunk
+            window._wasmDownloadChunks[downloadId].push(bytes);
             
-            // Close stream when complete
+            // When complete, create blob and trigger download
             if (message.is_complete === true) {
-              await writer.close();
-              delete window._wasmDownloadStreams[downloadId];
+              const chunks = window._wasmDownloadChunks[downloadId];
               
-              // Show success notification
-              if (Shiny && Shiny.notifications) {
-                Shiny.notifications.show({
-                  html: 'Download completed: ' + message.filename,
-                  type: 'message',
-                  duration: 3
-                });
-              }
+              // Create blob directly from chunks array (more memory efficient for large files)
+              const blob = new Blob(chunks, { type: 'application/octet-stream' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = message.filename || 'download.html';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              
+              // Cleanup
+              setTimeout(() => URL.revokeObjectURL(url), 100);
+              delete window._wasmDownloadChunks[downloadId];
             }
           } catch (e) {
             console.error('WASM download error:', e);
-            
-            // Cleanup on error
-            const writer = window._wasmDownloadStreams[message.filename];
-            if (writer) {
-              try {
-                await writer.abort();
-              } catch (abortError) {
-                console.error('Error aborting stream:', abortError);
-              }
-              delete window._wasmDownloadStreams[message.filename];
-            }
-            
             if (Shiny && Shiny.notifications) {
               Shiny.notifications.show({
                 html: 'Download failed: ' + e.message,
-                type: 'error',
-                duration: null
+                type: 'error'
               });
             }
           }
@@ -274,7 +237,7 @@ wasm_download_button <- function(inputId, label, ..., style = NULL) {
     })();
   ")))
   
-  shiny::tagList(streamsaver_script, btn, js_code)
+  shiny::tagList(btn, js_code)
 }
 
 wasm_send_file_download <- function(session, filepath, filename, 

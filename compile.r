@@ -34,9 +34,9 @@ app_names <- list.dirs("apps", full.names = FALSE, recursive = FALSE)
 app_names <- app_names[!startsWith(app_names, ".")]
 app_names <- app_names[!app_names %in% c("shinylive", "shinylive-sw")]
 
-shared_path <- fs::path_abs("./shared")
+shared_path <- fs::path_abs("./www")
 apps <- lapply(app_names, function(app_name) {
-  share_link <- file.path("./apps", app_name, "shared")
+  share_link <- file.path("./apps", app_name, "www")
   has_link <- fs::link_exists(share_link)
   if(has_link && !fs::path_rel(shared_path, start = fs::link_path(share_link)) != ".") {
     has_link <- FALSE
@@ -88,7 +88,7 @@ ul_html <- shiny::tags$ul(lapply(apps, function(item) {
 }))
 
 # save index.html
-source("shared/r/shiny-helper.r")
+source("www/r/shiny-helper.r")
 index_html <- bslib_page_template(
   "home",
   "RAVE (portable version)",

@@ -7,7 +7,7 @@ if(FALSE) {
   library(bslib)
 }
 this_env <- environment()
-source("shared/r/shiny-helper.r", local = this_env)
+source("www/r/shiny-helper.r", local = this_env)
 
 module_id <- "freesurfer-viewer"
 module_title <- tryCatch({
