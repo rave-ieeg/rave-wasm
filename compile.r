@@ -45,7 +45,10 @@ apps <- lapply(app_names, function(app_name) {
     if(file.exists(share_link)) {
       unlink(share_link, recursive = TRUE)
     }
-    fs::link_create(shared_path, fs::path_abs(share_link), symbolic = TRUE)
+    
+    fs::link_create(shared_path, 
+                    normalizePath(share_link, winslash = "/", mustWork = FALSE),
+                    symbolic = TRUE)
   }
   # get app title
   app_title <- NULL
