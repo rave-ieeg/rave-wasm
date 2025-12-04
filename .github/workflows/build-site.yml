@@ -1,0 +1,169 @@
+name: Build WASM Site
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.package-version.outputs.version }}
+      major-minor: ${{ steps.package-version.outputs.major-minor }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Extract package.json version
+        id: package-version
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+          MAJOR_MINOR=$(echo $VERSION | cut -d. -f1-2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "major-minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION (major.minor: $MAJOR_MINOR)"
+      
+      - name: Setup R
+        id: setup-r
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+      
+      - name: Get R package cache path
+        id: r-cache-path
+        run: echo "path=$(Rscript -e 'cat(.libPaths()[1])')" >> $GITHUB_OUTPUT
+      
+      - name: Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.r-cache-path.outputs.path }}
+          key: r-packages-${{ runner.os }}-${{ steps.setup-r.outputs.r-version }}-${{ steps.package-version.outputs.major-minor }}
+          restore-keys: |
+            r-packages-${{ runner.os }}-${{ steps.setup-r.outputs.r-version }}-
+            r-packages-${{ runner.os }}-
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev
+      
+      - name: Install R packages
+        run: |
+          Rscript -e 'install.packages(c("pak", "remotes"))'
+          Rscript -e '
+            repos <- as.list(getOption("repos"))
+            repos[["rave-ieeg"]] <- "https://rave-ieeg.r-universe.dev"
+            repos <- repos[unique(c("rave-ieeg", names(repos)))]
+            options(repos = unlist(repos, use.names = TRUE))
+            pak::pak(c(
+              "posit-dev/r-shinylive", "yaml", "fs", "shiny", "bslib", "htmltools",
+              "ravecore", "ravebuiltins"
+            ))
+          '
+      
+      - name: Run compile.r
+        run: Rscript compile.r
+      
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-${{ steps.package-version.outputs.version }}
+          path: ./site
+          retention-days: 90
+
+  build-electron-macos:
+    runs-on: macos-latest
+    needs: build
+    if: github.repository == 'rave-ieeg/rave-wasm'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Check if version already released
+        id: check-release
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          echo "Checking for existing release with version v$VERSION"
+          
+          # Check if a non-prerelease exists with this version
+          RELEASE_INFO=$(gh release view "v$VERSION" --json isPrerelease,tagName 2>/dev/null || echo "")
+          
+          if [ -n "$RELEASE_INFO" ]; then
+            IS_PRERELEASE=$(echo "$RELEASE_INFO" | jq -r '.isPrerelease')
+            if [ "$IS_PRERELEASE" = "false" ]; then
+              echo "skip=true" >> $GITHUB_OUTPUT
+              echo "Version v$VERSION already released (non-prerelease). Skipping electron build."
+              exit 0
+            else
+              echo "skip=false" >> $GITHUB_OUTPUT
+              echo "Version v$VERSION exists as pre-release. Will update it."
+            fi
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Version v$VERSION not found. Will create new pre-release."
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      
+      - name: Download site artifact
+        if: steps.check-release.outputs.skip != 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: site-${{ needs.build.outputs.version }}
+          path: ./site
+      
+      - name: Setup Node.js
+        if: steps.check-release.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        if: steps.check-release.outputs.skip != 'true'
+        run: npm ci
+      
+      - name: Build macOS Electron apps (unsigned)
+        if: steps.check-release.outputs.skip != 'true'
+        run: npm run build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      
+      - name: Create or update pre-release
+        if: steps.check-release.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.build.outputs.version }}
+          name: RAVE Widgets v${{ needs.build.outputs.version }} (unstable)
+          prerelease: true
+          files: dist/RAVE-PortableWidgets-*.dmg
+          body: |
+            ## RAVE Widgets v${{ needs.build.outputs.version }} (Unstable Pre-release)
+            
+            This is an automatically generated pre-release build for macOS only.
+            
+            **⚠️ Warning:** This is an unsigned build. macOS will show security warnings when opening.
+            
+            ### Installation
+            - Download the appropriate DMG file for your architecture:
+              - `arm64`: Apple Silicon (M1/M2/M3)
+              - `x64`: Intel processors
+            
+            ### To promote to stable release:
+            1. Edit this release and uncheck "Set as a pre-release"
+            2. Save the release
+            3. This will trigger the full multi-platform signed build workflow
+            
+            **Built from commit:** ${{ github.sha }}
+          fail_on_unmatched_files: true
+          overwrite: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

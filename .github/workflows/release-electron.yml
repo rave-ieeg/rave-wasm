@@ -1,0 +1,136 @@
+name: Release Electron Apps
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    if: github.event.release.prerelease == false
+    outputs:
+      should-build: ${{ steps.validate-version.outputs.should-build }}
+      version: ${{ steps.validate-version.outputs.version }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Validate version
+        id: validate-version
+        run: |
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          PACKAGE_VERSION=$(jq -r '.version' package.json)
+          
+          echo "Release tag: $RELEASE_TAG"
+          echo "Release version: $RELEASE_VERSION"
+          echo "Package.json version: $PACKAGE_VERSION"
+          
+          if [ "$RELEASE_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "❌ Version mismatch!"
+            echo "Release version ($RELEASE_VERSION) does not match package.json version ($PACKAGE_VERSION)"
+            echo "should-build=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ Version validated: $PACKAGE_VERSION"
+          echo "should-build=true" >> $GITHUB_OUTPUT
+          echo "version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Check required secrets
+        run: |
+          MISSING_SECRETS=""
+          
+          if [ -z "${{ secrets.APPLE_ID }}" ]; then
+            MISSING_SECRETS="${MISSING_SECRETS}- APPLE_ID\n"
+          fi
+          
+          if [ -z "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" ]; then
+            MISSING_SECRETS="${MISSING_SECRETS}- APPLE_APP_SPECIFIC_PASSWORD\n"
+          fi
+          
+          if [ -z "${{ secrets.CSC_LINK }}" ]; then
+            MISSING_SECRETS="${MISSING_SECRETS}- CSC_LINK\n"
+          fi
+          
+          if [ -z "${{ secrets.CSC_KEY_PASSWORD }}" ]; then
+            MISSING_SECRETS="${MISSING_SECRETS}- CSC_KEY_PASSWORD\n"
+          fi
+          
+          if [ -n "$MISSING_SECRETS" ]; then
+            echo "❌ Missing required secrets for code signing:"
+            echo -e "$MISSING_SECRETS"
+            echo ""
+            echo "Please add these secrets to your repository settings:"
+            echo "Settings > Secrets and variables > Actions > Repository secrets"
+            echo ""
+            echo "See CODESIGNING-GUIDE.md for detailed setup instructions."
+            exit 1
+          fi
+          
+          echo "✅ All required secrets are configured"
+
+  build:
+    needs: validate
+    if: needs.validate.outputs.should-build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            arch: x64,arm64
+          - os: windows-latest
+            platform: win
+            arch: x64,ia32
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64,arm64
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Download site artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-site.yml
+          name: site-${{ needs.validate.outputs.version }}
+          path: ./site
+          search_artifacts: true
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build Electron app (${{ matrix.platform }})
+        run: npm run build:${{ matrix.platform }}
+        env:
+          # macOS code signing and notarization
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # Windows code signing (if applicable)
+          CSC_LINK_WIN: ${{ secrets.CSC_LINK_WIN }}
+          CSC_KEY_PASSWORD_WIN: ${{ secrets.CSC_KEY_PASSWORD_WIN }}
+      
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/RAVE-PortableWidgets-*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

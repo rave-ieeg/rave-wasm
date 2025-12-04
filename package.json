@@ -35,6 +35,7 @@
   "build": {
     "appId": "com.rave.widgets",
     "productName": "RAVE Widgets",
+    "artifactName": "RAVE-PortableWidgets-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "dist"
     },
