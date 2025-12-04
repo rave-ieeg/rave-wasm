@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     outputs:
       version: ${{ steps.package-version.outputs.version }}
       major-minor: ${{ steps.package-version.outputs.major-minor }}
@@ -19,6 +19,26 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
+      - name: Setup R
+        id: setup-r
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: 'release'
+          use-public-rspm: true
+      
+      - name: Install system dependencies (Homebrew on macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -eux
+          brew update
+          brew install openssl libxml2 jq fftw hdf5 pkg-config cmake libpng
+
+      - name: Install system dependencies (apt on Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev
       
       - name: Extract package.json version
         id: package-version
@@ -28,13 +48,6 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "major-minor=$MAJOR_MINOR" >> $GITHUB_OUTPUT
           echo "Package version: $VERSION (major.minor: $MAJOR_MINOR)"
-      
-      - name: Setup R
-        id: setup-r
-        uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: 'release'
-          use-public-rspm: true
       
       - name: Get R package cache path
         id: r-cache-path
@@ -48,11 +61,6 @@ jobs:
           restore-keys: |
             r-packages-${{ runner.os }}-${{ steps.setup-r.outputs.r-version }}-
             r-packages-${{ runner.os }}-
-      
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev libssl-dev libxml2-dev
       
       - name: Install R packages
         run: |
@@ -77,3 +85,26 @@ jobs:
           name: site-${{ steps.package-version.outputs.version }}
           path: ./site
           retention-days: 90
+  deploy_pages:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: "pages"
+      cancel-in-progress: false
+    steps:
+      - name: Download site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: site-${{ needs.build.outputs.version }}
+          path: ./site
+      - name: Upload artifact for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
