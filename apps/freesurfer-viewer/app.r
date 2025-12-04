@@ -36,7 +36,7 @@ ui <- bslib_page_template(
         label = "Imaging folder/file",
         after_content = "T1 MRI or FreeSurfer directory",
         size = "s",
-        maxSize = 200 * 1024^2,
+        maxSize = 50 * 1024^2,
         width = "100%",
         autoCleanup = TRUE,
         autoCleanupLocked = TRUE,
