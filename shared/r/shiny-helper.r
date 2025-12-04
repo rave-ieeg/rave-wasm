@@ -110,6 +110,17 @@ file_ext <- function(file) {
   return(sprintf(".%s%s", s[[length(s)]], ext2))
 }
 
+bslib_theme <- function() {
+  theme <- bslib::bs_theme('5', preset = "zephyr")
+  theme <- bslib::bs_add_rules(
+    theme,
+    c(
+      ".main.bslib-gap-spacing { padding: 0 !important; }",
+      ".shiny-output-error-validation { padding: 10px; }"
+    )
+  )
+  theme
+}
 
 bslib_page_template <- function(module_id, module_title, sidebar, 
                                 window_title = module_title, fluid = TRUE, ...) {
@@ -121,7 +132,7 @@ bslib_page_template <- function(module_id, module_title, sidebar,
       title = shiny::a("RAVE", target = "_blank", href = "https://rave.wiki"), 
       fillable = TRUE,
       fillable_mobile = FALSE,
-      theme = bslib::bs_theme('5', preset = "zephyr"),
+      theme = bslib_theme(),
       window_title = window_title,
       fluid = fluid, 
       selected = module_id,
@@ -137,7 +148,7 @@ bslib_page_template <- function(module_id, module_title, sidebar,
       title = shiny::a("RAVE", target = "_blank", href = "https://rave.wiki"), 
       fillable = TRUE,
       fillable_mobile = FALSE,
-      theme = bslib::bs_theme('5', preset = "zephyr"),
+      theme = bslib_theme(),
       window_title = window_title,
       fluid = fluid, 
       selected = module_id,
@@ -147,10 +158,11 @@ bslib_page_template <- function(module_id, module_title, sidebar,
         shiny::a("Home", href = "/")
       ),
       bslib::nav_panel(
-        title = "NIfTI/FreeSurfer Viewer", value = module_id,
+        title = module_title,
+        value = module_id,
+        # class = "",
         ...
       )
     )
   }
-  
 }

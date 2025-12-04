@@ -1,8 +1,11 @@
 library(shiny)
 library(threeBrain)
 library(dipsaus)
-library(bslib)
 library(yaml)
+if(FALSE) {
+  # trigger WASM
+  library(bslib)
+}
 this_env <- environment()
 source("shared/r/shiny-helper.r", local = this_env)
 
@@ -24,7 +27,7 @@ ui <- bslib_page_template(
   module_title = module_title,
   window_title = module_title,
   fluid = TRUE,
-  sidebar = shiny::fluidRow(
+  sidebar = shiny::tagList(
     shiny::column(
       width = 12L,
       shiny::h3("STEP 1:"),
@@ -67,7 +70,7 @@ ui <- bslib_page_template(
     )
   ),
   
-  # content
+  # content ...
   threeBrain::threejsBrainOutput(
     outputId = ns("viewer"),
     width = "100%",
@@ -107,7 +110,7 @@ server <- function(input, output, session) {
     value_table <- local_data$value_table
     if(is.data.frame(value_table) && nrow(value_table)) {
       message("Setting electrode values")
-      print(value_table)
+      # print(value_table)
       local_data$brain$set_electrode_values(value_table)
     }
     return(local_data$brain)
@@ -157,8 +160,6 @@ server <- function(input, output, session) {
         included_dirs <- "fs"
       }
       subject_fspath <- file.path(upload_dir, included_dirs)
-      
-      print(subject_fspath)
       
       local_reactive$needs_update <- Sys.time()
       local_data$coord_table <- NULL
