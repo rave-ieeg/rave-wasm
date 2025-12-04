@@ -3,17 +3,94 @@ name: Release Electron Apps
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (leave empty to use package.json version)'
+        required: false
+        type: string
+        default: ''
+      build_site_first:
+        description: 'Build WASM site before building Electron apps'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
+  # Build site artifact if requested (manual trigger only)
+  prepare:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.build_site_first
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Get version
+        id: get-version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=$(jq -r '.version' package.json)
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+      
+      - name: Trigger Build WASM Site workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Triggering Build WASM Site workflow..."
+          gh workflow run build-site.yml --ref ${{ github.ref }}
+          
+          # Wait a moment for the workflow to start
+          sleep 10
+          
+          # Get the run ID of the triggered workflow
+          echo "Waiting for Build WASM Site workflow to complete..."
+          for i in {1..60}; do
+            RUN_ID=$(gh run list --workflow=build-site.yml --limit=1 --json databaseId,status --jq '.[0].databaseId')
+            STATUS=$(gh run list --workflow=build-site.yml --limit=1 --json status --jq '.[0].status')
+            
+            echo "Run $RUN_ID status: $STATUS (attempt $i/60)"
+            
+            if [ "$STATUS" = "completed" ]; then
+              CONCLUSION=$(gh run view $RUN_ID --json conclusion --jq '.conclusion')
+              if [ "$CONCLUSION" = "success" ]; then
+                echo "✅ Build WASM Site workflow completed successfully"
+                break
+              else
+                echo "❌ Build WASM Site workflow failed with conclusion: $CONCLUSION"
+                exit 1
+              fi
+            fi
+            
+            sleep 30
+          done
+          
+          if [ "$STATUS" != "completed" ]; then
+            echo "❌ Timeout waiting for Build WASM Site workflow"
+            exit 1
+          fi
+
   validate:
     runs-on: ubuntu-latest
-    if: github.event.release.prerelease == false
+    needs: [prepare]
+    # Run if: (release event) OR (manual trigger after prepare completes or if build_site_first is false)
+    if: |
+      always() && 
+      (github.event_name == 'release' || 
+       (github.event_name == 'workflow_dispatch' && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')))
     outputs:
       should-build: ${{ steps.validate-version.outputs.should-build }}
       version: ${{ steps.validate-version.outputs.version }}
+      has-signing-secrets: ${{ steps.check-secrets.outputs.has-signing-secrets }}
     
     steps:
       - name: Checkout repository
@@ -22,60 +99,113 @@ jobs:
       - name: Validate version
         id: validate-version
         run: |
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
-          RELEASE_VERSION="${RELEASE_TAG#v}"
-          PACKAGE_VERSION=$(jq -r '.version' package.json)
-          
-          echo "Release tag: $RELEASE_TAG"
-          echo "Release version: $RELEASE_VERSION"
-          echo "Package.json version: $PACKAGE_VERSION"
-          
-          if [ "$RELEASE_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "❌ Version mismatch!"
-            echo "Release version ($RELEASE_VERSION) does not match package.json version ($PACKAGE_VERSION)"
-            echo "should-build=false" >> $GITHUB_OUTPUT
-            exit 1
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual trigger: use input version or package.json
+            if [ -n "${{ inputs.version }}" ]; then
+              VERSION="${{ inputs.version }}"
+            else
+              VERSION=$(jq -r '.version' package.json)
+            fi
+            echo "Manual trigger - using version: $VERSION"
+          else
+            # Release event: validate tag matches package.json
+            RELEASE_TAG="${{ github.event.release.tag_name }}"
+            RELEASE_VERSION="${RELEASE_TAG#v}"
+            PACKAGE_VERSION=$(jq -r '.version' package.json)
+            
+            echo "Release tag: $RELEASE_TAG"
+            echo "Release version: $RELEASE_VERSION"
+            echo "Package.json version: $PACKAGE_VERSION"
+            
+            if [ "$RELEASE_VERSION" != "$PACKAGE_VERSION" ]; then
+              echo "❌ Version mismatch!"
+              echo "Release version ($RELEASE_VERSION) does not match package.json version ($PACKAGE_VERSION)"
+              echo "should-build=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            VERSION="$PACKAGE_VERSION"
           fi
           
-          echo "✅ Version validated: $PACKAGE_VERSION"
+          echo "✅ Version validated: $VERSION"
           echo "should-build=true" >> $GITHUB_OUTPUT
-          echo "version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
       
-      - name: Check required secrets
+      - name: Check code signing secrets
+        id: check-secrets
         run: |
           MISSING_SECRETS=""
+          HAS_SECRETS="true"
           
           if [ -z "${{ secrets.APPLE_ID }}" ]; then
             MISSING_SECRETS="${MISSING_SECRETS}- APPLE_ID\n"
+            HAS_SECRETS="false"
           fi
           
           if [ -z "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" ]; then
             MISSING_SECRETS="${MISSING_SECRETS}- APPLE_APP_SPECIFIC_PASSWORD\n"
+            HAS_SECRETS="false"
           fi
           
           if [ -z "${{ secrets.CSC_LINK }}" ]; then
             MISSING_SECRETS="${MISSING_SECRETS}- CSC_LINK\n"
+            HAS_SECRETS="false"
           fi
           
           if [ -z "${{ secrets.CSC_KEY_PASSWORD }}" ]; then
             MISSING_SECRETS="${MISSING_SECRETS}- CSC_KEY_PASSWORD\n"
+            HAS_SECRETS="false"
           fi
           
           if [ -n "$MISSING_SECRETS" ]; then
-            echo "❌ Missing required secrets for code signing:"
+            echo "⚠️ Missing code signing secrets (builds will be unsigned):"
             echo -e "$MISSING_SECRETS"
             echo ""
-            echo "Please add these secrets to your repository settings:"
+            echo "To enable code signing, add these secrets to your repository settings:"
             echo "Settings > Secrets and variables > Actions > Repository secrets"
             echo ""
             echo "See CODESIGNING-GUIDE.md for detailed setup instructions."
-            exit 1
+          else
+            echo "✅ All code signing secrets are configured"
           fi
           
-          echo "✅ All required secrets are configured"
+          echo "has-signing-secrets=$HAS_SECRETS" >> $GITHUB_OUTPUT
+
+  # Ensure a release exists for this version (create prerelease if missing)
+  ensure-release:
+    runs-on: ubuntu-latest
+    needs: validate
+    if: needs.validate.outputs.should-build == 'true'
+    outputs:
+      tag-name: ${{ steps.ensure-release.outputs.tag-name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Ensure release exists
+        id: ensure-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          TAG_NAME="v$VERSION"
+          
+          echo "Checking if release $TAG_NAME exists..."
+          
+          if gh release view "$TAG_NAME" > /dev/null 2>&1; then
+            echo "✅ Release $TAG_NAME already exists"
+          else
+            echo "Creating prerelease $TAG_NAME..."
+            gh release create "$TAG_NAME" \
+              --prerelease \
+              --title "$TAG_NAME" \
+              --generate-notes
+            echo "✅ Created prerelease $TAG_NAME"
+          fi
+          
+          echo "tag-name=$TAG_NAME" >> $GITHUB_OUTPUT
 
   build:
-    needs: validate
+    needs: [validate, ensure-release]
     if: needs.validate.outputs.should-build == 'true'
     strategy:
       fail-fast: false
@@ -130,7 +260,9 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.ensure-release.outputs.tag-name }}
           files: dist/RAVE-PortableWidgets-*
           fail_on_unmatched_files: true
+          prerelease: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
