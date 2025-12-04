@@ -62,8 +62,8 @@ ui <- bslib_page_template(
     shiny::column(
       width = 12L,
       shiny::h3("STEP 4:"),
-      shiny::downloadButton(
-        outputId = ns("download"),
+      wasm_download_button(
+        inputId = ns("download"),
         label = "Export viewer",
         style = "width:100%"
       )
@@ -262,22 +262,31 @@ server <- function(input, output, session) {
     brain$render(outputId = "viewer", session = session, show_modal = FALSE)
   })
   
-  output$download <- shiny::downloadHandler(
-    filename = 'RAVEViewer.html',
-    # function(...) {
-    #   format(Sys.time(), "RAVEViewer-%y%m%d-%H%M%S.html")
-    # },
-    content = function(con) {
-      message("saving viewer")
+  shiny::bindEvent(
+    safe_observe({
+      message("Preparing viewer for download")
       brain <- set_brain()
       if(is.null(brain)) {
-        stop("Invalid viewer files. Please load the NIfTI/FreeSurfer files.")
+        shiny::showNotification("Invalid viewer files. Please load the NIfTI/FreeSurfer files.", type = "error")
+        return()
       }
+      
+      # Generate viewer HTML
       viewer <- brain$render(outputId = "viewer", session = session, show_modal = FALSE)
       tfpath <- tempfile(fileext = ".html")
       threeBrain::save_brain(viewer, title = "RAVE Viewer", path = tfpath)
-      file.rename(tfpath, con)
-    }
+      
+      # Stream file to client and cleanup
+      wasm_send_file_download(
+        session = session,
+        filepath = tfpath,
+        filename = "RAVEViewer.html",
+        cleanup = TRUE
+      )
+    }),
+    input$download,
+    ignoreNULL = TRUE,
+    ignoreInit = TRUE
   )
 }
 

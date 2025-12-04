@@ -68,7 +68,7 @@ safe_observe <- function (x, env = NULL, quoted = FALSE, priority = 0L, domain =
 }
 
 # For debugging
-# safe_observe <- shiny::observe
+safe_observe <- shiny::observe
 
 reconstruct_directory <- function(directory_data, root_dir = tempfile()) {
   directory_data <- as.data.frame(directory_data)
@@ -165,4 +165,167 @@ bslib_page_template <- function(module_id, module_title, sidebar,
       )
     )
   }
+}
+
+# WASM download helpers for shinylive environments
+wasm_download_button <- function(inputId, label, ..., style = NULL) {
+  # Create action button styled like download button
+  btn <- shiny::actionButton(
+    inputId = inputId,
+    label = label,
+    class = "btn-primary",
+    style = style,
+    ...
+  )
+  
+  # JavaScript handler for chunked download
+  js_code <- shiny::tags$script(shiny::HTML(sprintf("
+    (function() {
+      if (!window._wasmDownloadHandlerInitialized) {
+        window._wasmDownloadHandlerInitialized = true;
+        window._wasmDownloadChunks = {};
+        
+        Shiny.addCustomMessageHandler('wasmDownloadChunk', function(message) {
+          try {
+            const downloadId = message.filename || 'download';
+            
+            // Initialize chunks array for this download
+            if (message.chunk_index === 1) {
+              window._wasmDownloadChunks[downloadId] = [];
+            }
+            
+            // Decode base64 chunk to Uint8Array
+            const binaryString = atob(message.chunk);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            // Accumulate chunk
+            window._wasmDownloadChunks[downloadId].push(bytes);
+            
+            // When complete, create blob and trigger download
+            if (message.is_complete === true) {
+              const chunks = window._wasmDownloadChunks[downloadId];
+              
+              // Create blob directly from chunks array (more memory efficient for large files)
+              const blob = new Blob(chunks, { type: 'application/octet-stream' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = message.filename || 'download.html';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              
+              // Cleanup
+              setTimeout(() => URL.revokeObjectURL(url), 100);
+              delete window._wasmDownloadChunks[downloadId];
+            }
+          } catch (e) {
+            console.error('WASM download error:', e);
+            if (Shiny && Shiny.notifications) {
+              Shiny.notifications.show({
+                html: 'Download failed: ' + e.message,
+                type: 'error'
+              });
+            }
+          }
+        });
+      }
+    })();
+  ")))
+  
+  shiny::tagList(btn, js_code)
+}
+
+wasm_send_file_download <- function(session, filepath, filename, 
+                                     chunk_size = 2 * 1024^2, cleanup = TRUE) {
+  # Validate file exists
+  if (!file.exists(filepath)) {
+    stop("File not found: ", filepath)
+  }
+  
+  # Get file info
+  finfo <- file.info(filepath)
+  filesize <- finfo$size
+  
+  if (filesize == 0) {
+    shiny::showNotification("File is empty, cannot download", type = "error")
+    return(invisible(NULL))
+  }
+  
+  # Calculate total chunks
+  total_chunks <- ceiling(filesize / chunk_size)
+  
+  # Open binary connection
+  con <- file(filepath, "rb")
+  on.exit({
+    close(con)
+    if (cleanup && file.exists(filepath)) {
+      unlink(filepath)
+    }
+  })
+  
+  # Read and send chunks
+  tryCatch({
+    # Initialize progress
+    progress <- dipsaus::progress2(sprintf("Exporting %s", filename), max = total_chunks, shiny_auto_close = TRUE)
+    
+    for (i in seq_len(total_chunks)) {
+      # Read chunk
+      raw_chunk <- readBin(con, "raw", n = chunk_size)
+      
+      if (length(raw_chunk) == 0) {
+        break
+      }
+      
+      # Base64 encode
+      base64_chunk <- jsonlite::base64_enc(raw_chunk)
+      
+      # Send to client
+      session$sendCustomMessage(
+        type = 'wasmDownloadChunk',
+        message = list(
+          chunk = base64_chunk,
+          chunk_index = i,
+          total_chunks = total_chunks,
+          filename = filename,
+          filesize = filesize,
+          is_complete = FALSE
+        )
+      )
+      
+      # Update progress
+      progress_message <- sprintf("Chunk %d/%d", i, total_chunks)
+      progress$inc(progress_message)
+      
+      # Small delay to prevent overwhelming the message queue
+      Sys.sleep(0.001)
+    }
+    
+    # Send completion message
+    session$sendCustomMessage(
+      type = 'wasmDownloadChunk',
+      message = list(
+        chunk = "",
+        chunk_index = total_chunks,
+        total_chunks = total_chunks,
+        filename = filename,
+        filesize = filesize,
+        is_complete = TRUE
+      )
+    )
+    
+  }, error = function(e) {
+    shiny::showNotification(
+      paste("Download failed:", e$message),
+      type = "error",
+      duration = NULL
+    )
+    stop(e)
+  })
+  
+  invisible(NULL)
 }
