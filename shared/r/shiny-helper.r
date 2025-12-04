@@ -18,7 +18,7 @@ safe_wrap_expr <- function (expr, onFailure = NULL, finally = {}) {
       type = "error",
       closeButton = TRUE,
       duration = NULL,
-      ui = shiny::p(paste(cond$message, collapse = "\n"))
+      ui = shiny::p(paste(e$message, collapse = "\n"))
     )
   }, finally = try({
     finally
@@ -67,6 +67,9 @@ safe_observe <- function (x, env = NULL, quoted = FALSE, priority = 0L, domain =
                  domain = domain, ...)
 }
 
+# For debugging
+# safe_observe <- shiny::observe
+
 reconstruct_directory <- function(directory_data, root_dir = tempfile()) {
   directory_data <- as.data.frame(directory_data)
   dir.create(root_dir, showWarnings = FALSE, recursive = TRUE)
@@ -81,9 +84,8 @@ reconstruct_directory <- function(directory_data, root_dir = tempfile()) {
     }
     dst_path <- file.path(root_dir, row$relativePath, fsep = "/")
     dir.create(dirname(dst_path), showWarnings = FALSE, recursive = TRUE)
-    file.copy(from = src_path, to = dst_path, overwrite = TRUE, recursive = FALSE)
+    file.rename(from = src_path, to = dst_path)
     row$datapath <- dst_path
-    unlink(src_path)
     as.data.frame(row)
   })
   do.call("rbind", res)

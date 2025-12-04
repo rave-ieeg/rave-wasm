@@ -11,6 +11,9 @@ let server;
 function createLocalServer() {
   return new Promise((resolve) => {
     server = http.createServer((req, res) => {
+      // Enable keep-alive for connection reuse
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Keep-Alive', 'timeout=600');
       // Parse the URL and remove query string
       let filePath = req.url.split('?')[0];
       
@@ -22,8 +25,8 @@ function createLocalServer() {
       // Construct full file path
       const fullPath = path.join(__dirname, 'site', filePath);
       
-      // Read and serve the file
-      fs.readFile(fullPath, (err, data) => {
+      // Check if file exists first
+      fs.stat(fullPath, (err, stats) => {
         if (err) {
           res.writeHead(404);
           res.end('File not found');
@@ -37,23 +40,47 @@ function createLocalServer() {
           'Cross-Origin-Opener-Policy': 'same-origin',
           'Cross-Origin-Embedder-Policy': 'require-corp',
           'Service-Worker-Allowed': '/',
-          'Cache-Control': 'no-cache'
+          'Content-Length': stats.size,
+          'Accept-Ranges': 'bytes'
         };
         
-        // Add special headers for service worker files
-        if (fullPath.endsWith('-sw.js') || fullPath.includes('service-worker') || fullPath.includes('shinylive-sw')) {
+        // Aggressive caching for WASM and static assets
+        if (fullPath.endsWith('.wasm') || fullPath.endsWith('.data') || 
+            fullPath.endsWith('.js') || fullPath.endsWith('.css') ||
+            fullPath.includes('/packages/') || fullPath.includes('/webr/')) {
+          headers['Cache-Control'] = 'public, max-age=31536000, immutable'; // 1 year cache
+        } else if (fullPath.endsWith('-sw.js') || fullPath.includes('service-worker') || 
+                   fullPath.includes('shinylive-sw')) {
+          // Service workers need to check for updates
+          headers['Cache-Control'] = 'public, max-age=0, must-revalidate';
           headers['Service-Worker-Allowed'] = '/';
           headers['Content-Type'] = 'application/javascript';
+        } else {
+          // HTML and other files - short cache
+          headers['Cache-Control'] = 'public, max-age=3600'; // 1 hour
         }
         
         res.writeHead(200, headers);
-        res.end(data);
+        
+        // Use streaming for better performance on large files
+        const readStream = fs.createReadStream(fullPath, { highWaterMark: 1024 * 1024 }); // 1MB chunks
+        readStream.pipe(res);
+        
+        readStream.on('error', (streamErr) => {
+          console.error('Stream error:', streamErr);
+          if (!res.headersSent) {
+            res.writeHead(500);
+          }
+          res.end();
+        });
       });
     });
     
     // Increase server timeout and max header size for large file uploads
     server.timeout = 600000; // 10 minutes
     server.maxHeadersCount = 100;
+    server.maxConnections = 1000; // Allow more concurrent connections
+    server.keepAliveTimeout = 600000; // Keep connections alive for reuse
     
     server.listen(0, 'localhost', () => {
       const port = server.address().port;
@@ -311,13 +338,16 @@ async function createWindow() {
 
 // Add command line switches before app is ready
 app.commandLine.appendSwitch('max-http-header-size', '80000');
-app.commandLine.appendSwitch('disable-http-cache'); // Reduce cache-related database operations
 app.commandLine.appendSwitch('ignore-certificate-errors'); // For localhost
 app.commandLine.appendSwitch('disk-cache-size', '10737418240'); // 10GB disk cache for large files
-app.commandLine.appendSwitch('js-flags', '--max-old-space-size=8192 --max-string-length=536870888'); // Increase limits
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion'); // Reduce background processing
-app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer'); // Better WASM support
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=8192 --wasm-max-mem-pages=65536'); // 8GB heap + 4GB WASM memory
+app.commandLine.appendSwitch('enable-features', 'SharedArrayBuffer,WebAssemblyThreads'); // WASM threading support
 app.commandLine.appendSwitch('enable-experimental-web-platform-features'); // Enable newer web APIs
+app.commandLine.appendSwitch('http-cache', 'memory'); // Use memory cache for faster access
+app.commandLine.appendSwitch('enable-parallel-downloading'); // Enable parallel downloads
+app.commandLine.appendSwitch('max-active-webgl-contexts', '16'); // Increase WebGL contexts
+app.commandLine.appendSwitch('renderer-process-limit', '100'); // Allow more renderer processes
+app.commandLine.appendSwitch('disable-site-isolation-trials'); // Faster cross-origin for localhost
 
 // Register protocol before app is ready
 app.whenReady().then(() => {

@@ -16,8 +16,6 @@ module_title <- tryCatch({
 
 # ---- Module-related setups
 ns <- shiny::NS(module_id)
-moduledir <- file.path(tempdir(), module_id)
-workdir <- file.path(moduledir, "fs")
 
 
 
@@ -35,8 +33,11 @@ ui <- bslib_page_template(
         label = "Imaging folder/file",
         after_content = "T1 MRI or FreeSurfer directory",
         size = "s",
-        maxSize = 50 * 1024^2,
-        width = "100%"
+        maxSize = 200 * 1024^2,
+        width = "100%",
+        autoCleanup = TRUE,
+        autoCleanupLocked = TRUE,
+        progress = TRUE
       )
     ),
     shiny::column(
@@ -81,6 +82,8 @@ server <- function(input, output, session) {
     needs_update = FALSE
   )
   local_data <- new.env(parent = emptyenv())
+  
+  dipsaus::observeDirectoryProgress("directory", session = session)
   brain_proxy <- threeBrain::brain_proxy(outputId = "viewer", session = session)
   
   set_brain <- function() {
@@ -112,46 +115,57 @@ server <- function(input, output, session) {
   
   shiny::bindEvent(
     safe_observe({
-      local_reactive$needs_update <- Sys.time()
-      local_data$brain <- NULL
-      local_data$coord_table <- NULL
-      local_data$value_table <- NULL
-      unlink(workdir, recursive = TRUE)
-      directory_info <- reconstruct_directory(input$directory, workdir)
-      included_dirs <- list.dirs(workdir, full.names = FALSE, recursive = FALSE)
-      included_dirs <- included_dirs[vapply(included_dirs, function(dname) {
-        if(startsWith(dname, ".")) { return(FALSE) }
-        return(file.exists(file.path(workdir, dname, "mri")))
-      }, FUN.VALUE = FALSE)]
-      included_files <- list.files(
-        workdir,
-        pattern = "\\.(nii|nii\\.gz|mgz)$",
-        all.files = FALSE,
-        full.names = FALSE,
-        recursive = FALSE,
-        include.dirs = FALSE, 
-        ignore.case = TRUE
-      )
-      if(!length(included_dirs) && !length(included_files)) {
-        # empty directory
-        message("Invalid brain files")
-        shiny::showNotification("Invalid uploads. Please load one NIfTI file (.nii, .nii.gz, or .mgz) or a FreeSurfer folder (containing mri/, surf/, ...)", type = "error")
+      
+      files <- input$directory
+      upload_dir <- attr(files, "upload_dir")
+      if(
+        is.null(files) ||
+        !identical(attr(files, "upload_status"), "completed") ||
+        length(upload_dir) != 1 || is.na(upload_dir)
+      ) {
         return()
       }
-      if(!length(included_dirs)) {
-        # single file?
-        included_files <- file.path(workdir, included_files[[1]])
-        dir.create(file.path(workdir, "fs", "mri"), showWarnings = FALSE, recursive = TRUE)
-        ext <- file_ext(included_files)
-        file.copy(included_files, file.path(workdir, "fs", "mri", sprintf("rave_slices%s", ext)))
-        included_dirs <- "fs"
-      } else {
+      included_dirs <- list.dirs(upload_dir, full.names = FALSE, recursive = FALSE)
+      included_dirs <- included_dirs[vapply(included_dirs, function(dname) {
+        if(startsWith(dname, ".")) { return(FALSE) }
+        return(threeBrain::check_freesurfer_path(file.path(upload_dir, dname)))
+        # return(file.exists(file.path(upload_dir, dname, "mri")))
+      }, FUN.VALUE = FALSE)]
+      if(length(included_dirs)) {
         included_dirs <- included_dirs[[1]]
+      } else {
+        # single file?
+        included_files <- list.files(
+          upload_dir,
+          pattern = "\\.(nii|nii\\.gz|mgz)$",
+          all.files = FALSE,
+          full.names = FALSE,
+          recursive = TRUE,
+          include.dirs = FALSE, 
+          ignore.case = TRUE
+        )
+        if(!length(included_files)) {
+          message("Invalid brain files")
+          shiny::showNotification("Invalid uploads. Please load one NIfTI file (.nii, .nii.gz, or .mgz) or a FreeSurfer folder (containing mri/, surf/, ...)", type = "error")
+          return()
+        }
+        included_files <- file.path(upload_dir, included_files[[1]])
+        dir.create(file.path(upload_dir, "fs", "mri"), showWarnings = FALSE, recursive = TRUE)
+        ext <- file_ext(included_files)
+        file.rename(from = included_files,
+                    to = file.path(upload_dir, "fs", "mri", sprintf("rave_slices%s", ext)))
+        included_dirs <- "fs"
       }
-      subject_fspath <- file.path(workdir, included_dirs)
+      subject_fspath <- file.path(upload_dir, included_dirs)
+      
+      print(subject_fspath)
+      
+      local_reactive$needs_update <- Sys.time()
+      local_data$coord_table <- NULL
+      local_data$value_table <- NULL
       local_data$brain <- threeBrain::threeBrain(path = subject_fspath,
-                                      subject_code = included_dirs,
-                                      surface_types = "inflated")
+                                                 subject_code = included_dirs,
+                                                 surface_types = "inflated")
       set_brain()
     }),
     input$directory, 
@@ -248,9 +262,10 @@ server <- function(input, output, session) {
   })
   
   output$download <- shiny::downloadHandler(
-    filename = function(...) {
-      format(Sys.time(), "RAVEViewer-%y%m%d-%H%M%S.html")
-    },
+    filename = 'RAVEViewer.html',
+    # function(...) {
+    #   format(Sys.time(), "RAVEViewer-%y%m%d-%H%M%S.html")
+    # },
     content = function(con) {
       message("saving viewer")
       brain <- set_brain()
