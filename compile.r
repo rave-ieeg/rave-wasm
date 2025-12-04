@@ -73,6 +73,19 @@ apps <- lapply(app_names, function(app_name) {
     package_cache = TRUE,
     assets_version = shinylive_asset_version
   )
+  # Ensure service worker path works when the app is hosted in a sub-path.
+  # Insert the meta tag right after the first <head> tag in the generated index.html
+  index_path <- file.path("site", app_name, "index.html")
+  if (file.exists(index_path)) {
+    html_lines <- readLines(index_path, warn = FALSE)
+    html_text <- paste(html_lines, collapse = "\n")
+    meta_tag <- '<meta name="shinylive:serviceworker_dir" content="../">'
+    # Insert meta tag after the opening <head> tag (handles attributes if any)
+    new_html_text <- sub("(<head[^>]*>)", paste0("\\1\n  ", meta_tag), html_text, perl = TRUE)
+    if (!identical(new_html_text, html_text)) {
+      writeLines(strsplit(new_html_text, "\n")[[1]], index_path)
+    }
+  }
   
   data.frame(
     id = app_name,
