@@ -40,7 +40,16 @@ jobs:
       - name: Install R packages
         run: |
           Rscript -e 'install.packages(c("pak", "remotes"))'
-          Rscript -e 'pak::pak(c("posit-dev/r-shinylive", "yaml", "fs", "shiny", "bslib", "htmltools"))'
+          Rscript -e '
+            repos <- as.list(getOption("repos"))
+            repos[["rave-ieeg"]] <- "https://rave-ieeg.r-universe.dev"
+            repos <- repos[unique(c("rave-ieeg", names(repos)))]
+            options(repos = unlist(repos, use.names = TRUE))
+            pak::pak(c(
+              "posit-dev/r-shinylive", "yaml", "fs", "shiny", "bslib", "htmltools",
+              "ravecore", "ravebuiltins"
+            ))
+          '
       
       - name: Run compile.r
         run: Rscript compile.r
