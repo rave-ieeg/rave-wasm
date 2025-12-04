@@ -1,0 +1,116 @@
+name: Pre-release Electron (macOS)
+
+on:
+  workflow_run:
+    workflows: ["Build WASM Site"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-electron-macos:
+    runs-on: macos-latest
+    if: |
+      github.repository == 'rave-ieeg/rave-wasm' && 
+      (github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch')
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Extract package.json version
+        id: package-version
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $VERSION"
+      
+      - name: Check if version already released
+        id: check-release
+        run: |
+          VERSION="${{ steps.package-version.outputs.version }}"
+          echo "Checking for existing release with version v$VERSION"
+          
+          # Check if a non-prerelease exists with this version
+          RELEASE_INFO=$(gh release view "v$VERSION" --json isPrerelease,tagName 2>/dev/null || echo "")
+          
+          if [ -n "$RELEASE_INFO" ]; then
+            IS_PRERELEASE=$(echo "$RELEASE_INFO" | jq -r '.isPrerelease')
+            if [ "$IS_PRERELEASE" = "false" ]; then
+              echo "skip=true" >> $GITHUB_OUTPUT
+              echo "Version v$VERSION already released (non-prerelease). Skipping electron build."
+              exit 0
+            else
+              echo "skip=false" >> $GITHUB_OUTPUT
+              echo "Version v$VERSION exists as pre-release. Will update it."
+            fi
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "Version v$VERSION not found. Will create new pre-release."
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+      
+      - name: Download site artifact
+        if: steps.check-release.outputs.skip != 'true'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-site.yml
+          workflow_conclusion: success
+          name: site-${{ steps.package-version.outputs.version }}
+          path: ./site
+          search_artifacts: true
+      
+      - name: Setup Node.js
+        if: steps.check-release.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        if: steps.check-release.outputs.skip != 'true'
+        run: npm ci
+      
+      - name: Build macOS Electron apps (unsigned)
+        if: steps.check-release.outputs.skip != 'true'
+        run: npm run build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create or update pre-release
+        if: steps.check-release.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.package-version.outputs.version }}
+          name: RAVE Widgets v${{ steps.package-version.outputs.version }} (unstable)
+          prerelease: true
+          files: dist/RAVE-PortableWidgets-*.dmg
+          body: |
+            ## RAVE Widgets v${{ steps.package-version.outputs.version }} (Unstable Pre-release)
+            
+            This is an automatically generated pre-release build for macOS only.
+            
+            **⚠️ Warning:** This is an unsigned build. macOS will show security warnings when opening.
+            
+            ### Installation
+            - Download the appropriate DMG file for your architecture:
+              - `arm64`: Apple Silicon (M1/M2/M3)
+              - `x64`: Intel processors
+            
+            ### To promote to stable release:
+            1. Edit this release and uncheck "Set as a pre-release"
+            2. Save the release
+            3. This will trigger the full multi-platform signed build workflow
+            
+            **Built from commit:** ${{ github.sha }}
+          fail_on_unmatched_files: true
+          overwrite: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

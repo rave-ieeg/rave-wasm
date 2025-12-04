@@ -22,14 +22,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    # Only deploy if the build workflow succeeded
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  # Wait for the build job to complete (not the entire workflow)
+  wait-for-build:
     runs-on: ubuntu-latest
-    
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    outputs:
+      version: ${{ steps.package-version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,12 +38,21 @@ jobs:
           VERSION=$(jq -r '.version' package.json)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Package version: $VERSION"
-      
+
+  deploy:
+    needs: wait-for-build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    
+    steps:
       - name: Download site artifact
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build-site.yml
-          name: site-${{ steps.package-version.outputs.version }}
+          workflow_conclusion: success
+          name: site-${{ needs.wait-for-build.outputs.version }}
           path: ./site
           search_artifacts: true
       
