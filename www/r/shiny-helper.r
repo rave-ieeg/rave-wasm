@@ -1,3 +1,30 @@
+if(FALSE) {
+  # trigger WASM
+  library(shiny)
+  library(threeBrain)
+  library(dipsaus)
+  library(yaml)
+  library(bslib)
+}
+
+if(file.exists("manifest.yaml")) {
+  module_info <- yaml::read_yaml("manifest.yaml")
+} else {
+  module_info <- list(app_id = "home")
+}
+
+module_id <- module_info$app_id
+module_title <- module_info$app_title
+module_description <- module_info$app_description
+ns <- shiny::NS(module_id)
+
+# also get citation information
+CITATION <- utils::citation("threeBrain")
+if(file.exists("./CITATION")) {
+  CITATION <- c(utils::readCitationFile("CITATION"), CITATION)
+}
+
+
 safe_wrap_expr <- function (expr, onFailure = NULL, finally = {}) {
   expr_ <- substitute(expr)
   parent_frame <- parent.frame()
@@ -116,14 +143,14 @@ bslib_theme <- function() {
     theme,
     c(
       ".main.bslib-gap-spacing { padding: 0 !important; }",
-      ".shiny-output-error-validation { padding: 10px; }"
+      ".shiny-output-error-validation { padding: 10px; }",
+      ".navbar-header .navbar-brand a { text-decoration: none; }"
     )
   )
   theme
 }
 
-bslib_page_template <- function(module_id, module_title, sidebar, 
-                                window_title = module_title, fluid = TRUE, ...) {
+bslib_page_template <- function(..., sidebar, fluid = TRUE, window_title = module_title) {
   if(!length(module_id)) {
     module_id <- "home"
   }
@@ -155,16 +182,46 @@ bslib_page_template <- function(module_id, module_title, sidebar,
       navbar_options = bslib::navbar_options(class = "py-1"),
       sidebar = sidebar,
       bslib::nav_item(
-        shiny::a("Home", href = "/")
+        shiny::a("Home", href = "../../", target = "_blank")
       ),
       bslib::nav_panel(
         title = module_title,
         value = module_id,
         # class = "",
         ...
+      ),
+      bslib::nav_item(
+        shiny::actionLink(inputId = ns("_description_"), label = "Module Information")
       )
     )
   }
+}
+
+server_common <- function(input, output, session) {
+  shiny::bindEvent(
+    safe_observe({
+      
+      description_ui <- shiny::tagList(
+        shiny::div(
+          shiny::HTML(module_description)
+        ),
+        shiny::h5("Citation"),
+        shiny::HTML(format(CITATION, style = "html"))
+      )
+      shiny::showModal(
+        session = session,
+        shiny::modalDialog(
+          title = sprintf("Module: %s", paste(module_title, collapse = " ")),
+          shiny::fluidRow(shiny::column(width = 12L, description_ui)),
+          size = "l",
+          easyClose = TRUE,
+          footer = shiny::modalButton("Close")
+        )
+      )
+    }),
+    input[['_description_']],
+    ignoreNULL = TRUE, ignoreInit = TRUE
+  )
 }
 
 # WASM download helpers for shinylive environments
@@ -328,4 +385,14 @@ wasm_send_file_download <- function(session, filepath, filename,
   })
   
   invisible(NULL)
+}
+
+
+start_app <- function(ui, server, launch.browser = TRUE, ...) {
+  shiny::shinyApp(ui = ui, server = function(input, output, session) {
+    shiny::moduleServer(id = module_id, module = function(input, output, session) {
+      server_common(input, output, session)
+      server(input, output, session)
+    }, session = session)
+  }, options = list(launch.browser = launch.browser, ...))
 }

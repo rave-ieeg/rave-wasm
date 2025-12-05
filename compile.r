@@ -106,18 +106,34 @@ ul_html <- shiny::tags$ul(lapply(apps, function(item) {
 # save index.html
 source("www/r/shiny-helper.r")
 index_html <- bslib_page_template(
-  "home",
-  "RAVE (portable version)",
   sidebar = NULL,
   window_title = "RAVE (portable version)",
-  fluid = FALSE,
+  fluid = TRUE,
   shiny::div(
     style = "min-height: 15px"
   ),
-  shiny::fluidRow(
-    shiny::column(
-      width = 12L,
-      ul_html
+  shiny::div(
+    class = "jumbotron",
+    shiny::div(
+      class = "container",
+      shiny::p(
+        # class = "lead",
+        "A collection of server-less RAVE widgets that runs entirely in your local browser. ",
+        "All the listed modules below are offline and your data will not be uploaded to the internet. ",
+        "The modules might take a while to load so please be patient. ",
+        shiny::a("Click here", href = "https://github.com/rave-ieeg/rave-wasm/releases", target = "_blank"),
+        "to download the offline app."
+      )
+    )
+  ),
+  shiny::hr(),
+  shiny::div(
+    class = "container",
+    shiny::fluidRow(
+      shiny::column(
+        width = 12L,
+        ul_html
+      )
     )
   )
 )
@@ -140,4 +156,10 @@ lapply(assets, function(f) {
   dir.create(dirname(dst), showWarnings = FALSE, recursive = TRUE)
   file.copy(from = src, to = dst, overwrite = FALSE, recursive = FALSE)
 })
-# httpuv::runStaticServer("site")
+
+
+if(interactive() && rstudioapi::isAvailable()) {
+  httpuv::stopAllServers()
+  httpuv::runStaticServer("site", background = TRUE)
+}
+

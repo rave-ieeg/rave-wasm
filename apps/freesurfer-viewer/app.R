@@ -1,31 +1,6 @@
-library(shiny)
-library(threeBrain)
-library(dipsaus)
-library(yaml)
-if(FALSE) {
-  # trigger WASM
-  library(bslib)
-}
-this_env <- environment()
-source("www/r/shiny-helper.r", local = this_env)
-
-module_id <- "freesurfer-viewer"
-module_title <- tryCatch({
-  module_info <- yaml::read_yaml("manifest.yaml")
-  module_info$app_title
-}, error = function(e) {
-  "RAVE NIfTI/FreeSurfer Viewer"
-})
-
-# ---- Module-related setups
-ns <- shiny::NS(module_id)
-
-
+source("www/r/shiny-helper.r", local = TRUE, chdir = FALSE)
 
 ui <- bslib_page_template(
-  module_id = module_id,
-  module_title = module_title,
-  window_title = module_title,
   fluid = TRUE,
   sidebar = shiny::tagList(
     shiny::column(
@@ -259,7 +234,7 @@ server <- function(input, output, session) {
     if(is.null(brain)) {
       stop("Please load a NIfTI file or a FreeSurfer folder first!")
     }
-    brain$render(outputId = "viewer", session = session, show_modal = FALSE)
+    brain$render(outputId = "viewer", session = session, show_modal = FALSE, side_canvas = TRUE)
   })
   
   shiny::bindEvent(
@@ -290,6 +265,4 @@ server <- function(input, output, session) {
   )
 }
 
-shiny::shinyApp(ui = ui, server = function(input, output, session) {
-  shiny::moduleServer(id = module_id, module = server, session = session)
-}, options = list(launch.browser = TRUE))
+start_app(ui, server)
