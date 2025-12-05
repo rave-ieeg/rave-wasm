@@ -84,9 +84,9 @@ jobs:
     needs: [prepare]
     # Run if: (release event) OR (manual trigger after prepare completes or if build_site_first is false)
     if: |
-      always() && 
+      always() && !cancelled() && !failure() &&
       (github.event_name == 'release' || 
-       (github.event_name == 'workflow_dispatch' && (needs.prepare.result == 'success' || needs.prepare.result == 'skipped')))
+       github.event_name == 'workflow_dispatch')
     outputs:
       should-build: ${{ steps.validate-version.outputs.should-build }}
       version: ${{ steps.validate-version.outputs.version }}
