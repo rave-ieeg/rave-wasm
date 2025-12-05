@@ -227,13 +227,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Download site artifact
+      - name: Download site artifact (specific version)
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.build_site_first)
         uses: dawidd6/action-download-artifact@v6
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           workflow: build-site.yml
           name: site-${{ needs.validate.outputs.version }}
           path: ./site
           search_artifacts: true
+      
+      - name: Download site artifact (latest available)
+        if: github.event_name == 'workflow_dispatch' && !inputs.build_site_first
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: build-site.yml
+          path: ./site
+          search_artifacts: true
+          # Get the most recent successful artifact when not building site first
+          if_no_artifact_found: fail
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -247,6 +260,8 @@ jobs:
       - name: Build Electron app (${{ matrix.platform }})
         run: npm run build:${{ matrix.platform }}
         env:
+          # GitHub token for electron-builder
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS code signing and notarization
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
