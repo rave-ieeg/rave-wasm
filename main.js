@@ -1,3 +1,8 @@
+// Preserve original PATH before Electron modifies it (important for R detection on Windows)
+if (process.env.PATH && !process.env.ORIGINAL_PATH) {
+  process.env.ORIGINAL_PATH = process.env.PATH;
+}
+
 const { app, BrowserWindow, protocol, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');

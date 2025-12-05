@@ -15,10 +15,57 @@ class RDetector {
   }
 
   /**
-   * Get common R paths based on platform
-   * @returns {string[]} - Array of paths to check
+   * Read R path from Windows Registry
+   * @returns {Promise<string[]>}
    */
-  _getCommonPaths() {
+  async _getWindowsRegistryPaths() {
+    if (process.platform !== 'win32') return [];
+    
+    return new Promise((resolve) => {
+      const paths = [];
+      
+      // Query registry for R installation path
+      const regQuery = spawn('reg', [
+        'query',
+        'HKLM\\Software\\R-core\\R',
+        '/s',
+        '/v',
+        'InstallPath'
+      ], { windowsHide: true });
+
+      let output = '';
+      regQuery.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      regQuery.on('close', () => {
+        // Parse registry output
+        const matches = output.matchAll(/InstallPath\s+REG_SZ\s+(.+)/g);
+        for (const match of matches) {
+          const installPath = match[1].trim();
+          paths.push(path.join(installPath, 'bin', 'x64', 'R.exe'));
+          paths.push(path.join(installPath, 'bin', 'i386', 'R.exe'));
+          paths.push(path.join(installPath, 'bin', 'R.exe'));
+        }
+        resolve(paths);
+      });
+
+      regQuery.on('error', () => {
+        resolve([]);
+      });
+
+      setTimeout(() => {
+        regQuery.kill();
+        resolve([]);
+      }, 3000);
+    });
+  }
+
+  /**
+   * Get common R paths based on platform
+   * @returns {Promise<string[]>} - Array of paths to check
+   */
+  async _getCommonPaths() {
     const platform = process.platform;
     const paths = [];
 
@@ -35,7 +82,28 @@ class RDetector {
       paths.push('/usr/local/bin/R');
       paths.push('/opt/R/bin/R');
     } else if (platform === 'win32') {
-      // Windows - check common installation directories
+      // 1. Try Windows Registry first (most reliable)
+      const registryPaths = await this._getWindowsRegistryPaths();
+      paths.push(...registryPaths);
+
+      // 2. Check environment variables (PATH and ORIGINAL_PATH)
+      const pathsToCheck = [
+        process.env.PATH,
+        process.env.ORIGINAL_PATH,
+        process.env.Path // Windows sometimes uses 'Path'
+      ].filter(Boolean);
+
+      for (const pathEnv of pathsToCheck) {
+        const pathDirs = pathEnv.split(path.delimiter);
+        for (const dir of pathDirs) {
+          const rExe = path.join(dir, 'R.exe');
+          const rscriptExe = path.join(dir, 'Rscript.exe');
+          if (fs.existsSync(rExe)) paths.push(rExe);
+          if (fs.existsSync(rscriptExe)) paths.push(rscriptExe);
+        }
+      }
+
+      // 3. Check common installation directories
       const programFiles = [
         process.env.ProgramFiles,
         process.env['ProgramFiles(x86)'],
@@ -43,15 +111,23 @@ class RDetector {
         'C:\\Program Files (x86)'
       ].filter(Boolean);
 
-      for (const pf of programFiles) {
+      // Remove duplicates
+      const uniqueProgramFiles = [...new Set(programFiles)];
+
+      for (const pf of uniqueProgramFiles) {
         const rBase = path.join(pf, 'R');
         if (fs.existsSync(rBase)) {
           try {
-            const versions = fs.readdirSync(rBase);
+            const versions = fs.readdirSync(rBase).sort().reverse(); // Get newest first
             for (const version of versions) {
               if (version.startsWith('R-')) {
+                // Try x64 first, then i386, then default bin
                 paths.push(path.join(rBase, version, 'bin', 'x64', 'R.exe'));
+                paths.push(path.join(rBase, version, 'bin', 'i386', 'R.exe'));
                 paths.push(path.join(rBase, version, 'bin', 'R.exe'));
+                paths.push(path.join(rBase, version, 'bin', 'x64', 'Rscript.exe'));
+                paths.push(path.join(rBase, version, 'bin', 'i386', 'Rscript.exe'));
+                paths.push(path.join(rBase, version, 'bin', 'Rscript.exe'));
               }
             }
           } catch (err) {
@@ -128,7 +204,7 @@ class RDetector {
     }
 
     // Check common paths
-    const paths = this._getCommonPaths();
+    const paths = await this._getCommonPaths();
     for (const testPath of paths) {
       const result = await this.testRPath(testPath);
       if (result.valid) {

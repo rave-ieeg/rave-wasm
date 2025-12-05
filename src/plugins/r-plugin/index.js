@@ -66,7 +66,7 @@ class RPlugin {
 
     // Create R session
     ipcMain.handle('plugin:r:createSession', wrapHandler(async (event, sessionId) => {
-      const status = this.detector.getStatus();
+      const status = await this.detector.getStatus();
       if (!status.detected) {
         return { success: false, error: 'R not detected' };
       }
