@@ -173,8 +173,11 @@ jobs:
   # Ensure a release exists for this version (create prerelease if missing)
   ensure-release:
     runs-on: ubuntu-latest
-    needs: validate
-    if: needs.validate.outputs.should-build == 'true'
+    needs: [prepare, validate]
+    if: |
+      always() && !cancelled() &&
+      needs.validate.result == 'success' &&
+      needs.validate.outputs.should-build == 'true'
     outputs:
       tag-name: ${{ steps.ensure-release.outputs.tag-name }}
     steps:
@@ -205,8 +208,12 @@ jobs:
           echo "tag-name=$TAG_NAME" >> $GITHUB_OUTPUT
 
   build:
-    needs: [validate, ensure-release]
-    if: needs.validate.outputs.should-build == 'true'
+    needs: [prepare, validate, ensure-release]
+    if: |
+      always() && !cancelled() &&
+      needs.validate.result == 'success' &&
+      needs.ensure-release.result == 'success' &&
+      needs.validate.outputs.should-build == 'true'
     strategy:
       fail-fast: false
       matrix:
