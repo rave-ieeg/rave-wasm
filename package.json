@@ -22,7 +22,10 @@
     "rave",
     "wasm"
   ],
-  "author": "",
+  "author": {
+    "name": "RAVE Team",
+    "email": "help@rave.wiki"
+  },
   "license": "ISC",
   "dependencies": {
     "mime-types": "^2.1.35"
