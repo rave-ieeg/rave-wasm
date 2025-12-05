@@ -243,9 +243,35 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workflow: build-site.yml
+          name: site-${{ needs.validate.outputs.version }}
+          name_is_regexp: false
           path: ./site
           search_artifacts: true
-          # Get the most recent successful artifact when not building site first
+          if_no_artifact_found: warn
+      
+      - name: Download any site artifact (fallback)
+        if: github.event_name == 'workflow_dispatch' && !inputs.build_site_first
+        id: fallback-artifact
+        continue-on-error: true
+        run: |
+          if [ -d "./site" ] && [ "$(ls -A ./site 2>/dev/null)" ]; then
+            echo "Site artifact already downloaded, skipping fallback"
+            echo "skipped=true" >> $GITHUB_OUTPUT
+          else
+            echo "No site artifact found, will try regex fallback"
+            echo "skipped=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Download site artifact (regex fallback)
+        if: github.event_name == 'workflow_dispatch' && !inputs.build_site_first && steps.fallback-artifact.outputs.skipped != 'true'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: build-site.yml
+          name: site-.*
+          name_is_regexp: true
+          path: ./site
+          search_artifacts: true
           if_no_artifact_found: fail
       
       - name: Setup Node.js
