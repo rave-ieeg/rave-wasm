@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+env:
+  RAVE_WASM_BASE_URL: "https://rave.wiki/rave-wasm"
+  RAVE_WASM_CACHE: "FALSE"
+
 permissions:
   contents: write
 
