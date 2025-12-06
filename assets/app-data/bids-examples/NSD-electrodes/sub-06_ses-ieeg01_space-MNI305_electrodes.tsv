@@ -1,0 +1,266 @@
+name	x	y	z	size	hemisphere	seizure_zone	Destrieux_label	Destrieux_label_text	vertex_fsaverage
+LA1	-18.319162	-3.01669	-12.645958	NaN	L		18	Left_Amygdala	160541
+LA2	-20.279491	-3.6693523	-13.862198	NaN	L		18	Left_Amygdala	9879
+LA3	-21.386147	-3.8590832	-15.085924	NaN	L		18	Left_Amygdala	160586
+LA4	-21.806662	-3.9954891	-16.056164	NaN	L		18	Left_Amygdala	89449
+LA5	-27.760962	-4.7538557	-22.21146	NaN	L		11117	lh_G_Ins_lg_and_S_cent_ins	9885
+LA6	-28.885248	-0.44424042	-21.216215	NaN	L		11123	lh_G_oc-temp_med-Parahip	62407
+LA7	-38.182228	1.9407215	-20.279716	NaN	L		11149	lh_S_circular_insula_inf	66289
+LA8	-40.966003	-1.0196494	-19.397421	NaN	L		11149	lh_S_circular_insula_inf	59077
+LA9	-42.794762	-1.6609962	-19.205309	NaN	L		2	Left_Cerebral_White_Matter	79319
+LA10	-51.819893	-6.9699302	-21.819208	NaN	L		11174	lh_S_temporal_sup	101776
+LA11	-54.487682	-5.4988799	-22.725307	NaN	L		11174	lh_S_temporal_sup	118206
+LA12	-59.813	-3.1837611	-22.781612	NaN	L	IrritativeZone	11174	lh_S_temporal_sup	101789
+LA13	-61.593567	-3.1531134	-24.624296	NaN	L	IrritativeZone	11138	lh_G_temporal_middle	46312
+LA14	-62.083076	-4.3491955	-24.676668	NaN	L	IrritativeZone	11138	lh_G_temporal_middle	15592
+LA15	NaN	NaN	NaN	NaN			NaN		NaN
+LB1	-19.992868	2.4643223	-28.888819	NaN	L		11123	lh_G_oc-temp_med-Parahip	89536
+LB2	-20.443195	1.9684108	-26.425177	NaN	L		18	Left_Amygdala	127414
+LB3	-26.625107	-1.3441849	-22.397709	NaN	L		18	Left_Amygdala	9889
+LB4	-29.648218	-7.3108993	-26.121075	NaN	L		18	Left_Amygdala	62471
+LB5	-34.728813	-11.12687	-24.37104	NaN	L		5	Left_Inf_Lat_Vent	24303
+LB6	-34.175072	-18.10186	-33.249588	NaN	L		11151	lh_S_collat_transv_ant	97556
+LB7	-40.45694	-27.109228	-23.957239	NaN	L		11151	lh_S_collat_transv_ant	114453
+LB8	-41.155571	-27.889423	-23.62554	NaN	L		2	Left_Cerebral_White_Matter	114450
+LB9	-43.794098	-29.49761	-24.825329	NaN	L		2	Left_Cerebral_White_Matter	70128
+LB10	-47.733513	-38.114235	-27.715504	NaN	L		2	Left_Cerebral_White_Matter	90821
+LB11	-47.995522	-40.247879	-28.281271	NaN	L		2	Left_Cerebral_White_Matter	114394
+LB12	-59.387108	-41.66024	-18.810715	NaN	L	IrritativeZone	2	Left_Cerebral_White_Matter	90613
+LB13	-53.680317	-58.435707	-18.297153	NaN	L	IrritativeZone	2	Left_Cerebral_White_Matter	10043
+LB14	-54.825184	-58.967377	-17.465881	NaN	L	IrritativeZone	11137	lh_G_temporal_inf	90661
+LB15	-55.71394	-58.641712	-17.870249	NaN	L	IrritativeZone	11137	lh_G_temporal_inf	40362
+LB16	-54.000446	-61.293633	-13.309657	NaN	L	IrritativeZone	11137	lh_G_temporal_inf	90600
+LB17	NaN	NaN	NaN	NaN			NaN		NaN
+LB18	NaN	NaN	NaN	NaN			NaN		NaN
+LC1	-36.428692	-35.894791	-10.025611	NaN	L	IrritativeZone	17	Left_Hippocampus	137673
+LC2	-37.711895	-33.801655	-11.638119	NaN	L	IrritativeZone	17	Left_Hippocampus	44142
+LC3	-38.454914	-31.192423	-12.291442	NaN	L	IrritativeZone	17	Left_Hippocampus	128552
+LC4	-33.046432	-29.035101	-20.182848	NaN	L		11162	lh_S_oc-temp_med_and_Lingual	128628
+LC5	-34.522148	-27.301666	-22.746067	NaN	L		2	Left_Cerebral_White_Matter	2536
+LC6	-51.788261	-22.596783	-11.420492	NaN	L		2	Left_Cerebral_White_Matter	3496
+LC7	-52.666832	-21.109892	-12.042958	NaN	L		11174	lh_S_temporal_sup	40012
+LC8	-53.933441	-19.093426	-13.015585	NaN	L		11174	lh_S_temporal_sup	113780
+LC9	-54.984905	-17.527319	-14.671659	NaN	L		11174	lh_S_temporal_sup	40043
+LC10	-56.44466	-16.27528	-15.550516	NaN	L		11174	lh_S_temporal_sup	52995
+LC11	-63.265522	-11.513149	-18.171606	NaN	L		0		40060
+LC12	NaN	NaN	NaN	NaN			NaN		NaN
+LC13	NaN	NaN	NaN	NaN			NaN		NaN
+LC14	NaN	NaN	NaN	NaN			NaN		NaN
+LC15	NaN	NaN	NaN	NaN			NaN		NaN
+LD1	-49.277565	-32.03109	-4.3092546	NaN	L		2	Left_Cerebral_White_Matter	111905
+LD2	-50.410919	-30.648746	-4.4532795	NaN	L		11174	lh_S_temporal_sup	21212
+LD3	-53.560741	-28.45322	-4.8208799	NaN	L		11174	lh_S_temporal_sup	111914
+LD4	-56.302849	-26.467722	-5.3229828	NaN	L		11174	lh_S_temporal_sup	156543
+LD5	-60.141479	-23.525469	-5.0619521	NaN	L		11134	lh_G_temp_sup-Lateral	21013
+LD6	-67.039146	-20.201427	2.6454194	NaN	L		11134	lh_G_temp_sup-Lateral	31214
+LD7	-67.106453	-19.716833	-0.41241199	NaN	L		11134	lh_G_temp_sup-Lateral	43350
+LD8	NaN	NaN	NaN	NaN			NaN		NaN
+LD9	NaN	NaN	NaN	NaN			NaN		NaN
+LD10	NaN	NaN	NaN	NaN			NaN		NaN
+LOC1	-1.5540775	-70.596779	13.581453	NaN	L		11111	lh_G_cuneus	101295
+LOC2	-9.7420673	-75.085251	11.288851	NaN	L	IrritativeZone	11145	lh_S_calcarine	2353
+LOC3	-13.340979	-76.285934	10.288515	NaN	L	IrritativeZone	11145	lh_S_calcarine	158171
+LOC4	-14.991341	-76.013573	8.8551044	NaN	L	IrritativeZone	11145	lh_S_calcarine	3317
+LOC5	-15.913562	-76.471344	7.0497193	NaN	L		2	Left_Cerebral_White_Matter	118381
+LOC6	-33.88549	-87.467636	-2.1359828	NaN	L		2	Left_Cerebral_White_Matter	39261
+LOC7	-39.597725	-90.656357	-8.6417751	NaN	L		11102	lh_G_and_S_occipital_inf	11180
+LOC8	-41.91317	-87.171921	-5.9743161	NaN	L	SOZ	11119	lh_G_occipital_middle	90357
+LOC9	-43.185112	-87.068161	-3.285567	NaN	L	SOZ	11119	lh_G_occipital_middle	161669
+LOC10	NaN	NaN	NaN	NaN			NaN		NaN
+LOC11	NaN	NaN	NaN	NaN			NaN		NaN
+LOC12	NaN	NaN	NaN	NaN			NaN		NaN
+LOC13	NaN	NaN	NaN	NaN			NaN		NaN
+LOC14	NaN	NaN	NaN	NaN			NaN		NaN
+LOC15	NaN	NaN	NaN	NaN			NaN		NaN
+LT1	-24.804235	-52.460125	-17.906645	NaN	L		11121	lh_G_oc-temp_lat-fusifor	15761
+LT2	-30.709118	-48.398415	-10.822368	NaN	L	SOZ	2	Left_Cerebral_White_Matter	22811
+LT3	-41.294163	-45.502586	-21.069216	NaN	L	SOZ	11161	lh_S_oc-temp_lat	128000
+LT4	-42.97876	-43.674717	-19.256149	NaN	L	SOZ	11161	lh_S_oc-temp_lat	28523
+LT5	-44.627861	-43.199635	-18.81131	NaN	L	SOZ	11161	lh_S_oc-temp_lat	137178
+LT6	-59.654583	-43.176991	-16.803478	NaN	L		2	Left_Cerebral_White_Matter	161987
+LT7	-58.008781	-50.537086	-6.928514	NaN	L		2	Left_Cerebral_White_Matter	28480
+LT8	-58.32534	-40.769997	-3.9587426	NaN	L		11174	lh_S_temporal_sup	116579
+LT9	-60.686302	-41.152725	-3.1963181	NaN	L		11174	lh_S_temporal_sup	14426
+LT10	-64.212662	-42.351002	-1.5837116	NaN	L		11138	lh_G_temporal_middle	30179
+LT11	NaN	NaN	NaN	NaN			NaN		NaN
+LT12	NaN	NaN	NaN	NaN			NaN		NaN
+LT13	NaN	NaN	NaN	NaN			NaN		NaN
+LT14	NaN	NaN	NaN	NaN			NaN		NaN
+LT15	NaN	NaN	NaN	NaN			NaN		NaN
+LX1	-9.5689592	38.143681	21.886017	NaN	L		11106	lh_G_and_S_cingul-Ant	153272
+LX2	-8.9432602	39.70224	21.909531	NaN	L		2	Left_Cerebral_White_Matter	50819
+LX3	-20.055649	37.745518	36.274467	NaN	L		2	Left_Cerebral_White_Matter	95988
+LX4	-20.233847	36.334648	35.801571	NaN	L		2	Left_Cerebral_White_Matter	43085
+LX5	-20.648575	35.003792	35.391937	NaN	L		11155	lh_S_front_sup	133683
+LX6	-36.846973	37.920616	31.451385	NaN	L		11115	lh_G_front_middle	149905
+LX7	-39.56889	38.031715	32.058434	NaN	L		11115	lh_G_front_middle	58
+LX8	-41.431831	38.06414	31.469946	NaN	L		11115	lh_G_front_middle	92617
+LX9	-40.604362	32.758423	31.971823	NaN	L		11115	lh_G_front_middle	19148
+LX10	-41.871559	31.615683	31.91666	NaN	L		11115	lh_G_front_middle	108189
+LX11	NaN	NaN	NaN	NaN			NaN		NaN
+LX12	NaN	NaN	NaN	NaN			NaN		NaN
+LX13	NaN	NaN	NaN	NaN			NaN		NaN
+LX14	NaN	NaN	NaN	NaN			NaN		NaN
+LX15	NaN	NaN	NaN	NaN			NaN		NaN
+LY1	-2.2330844	-7.0572252	32.210503	NaN	L	IrritativeZone	11167	lh_S_pericallosal	78922
+LY2	-2.0565076	-6.4320245	32.349827	NaN	L	IrritativeZone	2	Left_Cerebral_White_Matter	147935
+LY3	-5.6670895	-7.854126	43.267834	NaN	L		2	Left_Cerebral_White_Matter	71551
+LY4	-8.3575172	-8.9091349	43.085636	NaN	L		2	Left_Cerebral_White_Matter	46888
+LY5	-9.7533188	-9.9446011	43.067818	NaN	L		2	Left_Cerebral_White_Matter	24677
+LY6	NaN	NaN	NaN	NaN	L		2	Left_Cerebral_White_Matter	NaN
+LY7	-38.788483	1.901612	33.6446	NaN	L		2	Left_Cerebral_White_Matter	49801
+LY8	-39.58836	0.91669387	33.785805	NaN	L		2	Left_Cerebral_White_Matter	108070
+LY9	-41.484356	-0.21839771	34.092236	NaN	L		11169	lh_S_precentral-inf-part	149566
+LY10	-43.271179	-0.41190234	34.71579	NaN	L		11169	lh_S_precentral-inf-part	80265
+LY11	-46.175766	-0.41883126	35.880516	NaN	L		11169	lh_S_precentral-inf-part	36193
+LY12	-50.051155	-0.3499527	37.495708	NaN	L		11169	lh_S_precentral-inf-part	149522
+LY13	NaN	NaN	NaN	NaN			NaN		NaN
+LY14	NaN	NaN	NaN	NaN			NaN		NaN
+LY15	NaN	NaN	NaN	NaN			NaN		NaN
+LY16	NaN	NaN	NaN	NaN			NaN		NaN
+LY17	NaN	NaN	NaN	NaN			NaN		NaN
+LY18	NaN	NaN	NaN	NaN			NaN		NaN
+LZ1	-2.8728642	-50.514137	31.6548	NaN	L		11109	lh_G_cingul-Post-dorsal	112912
+LZ2	-7.0999537	-52.656197	29.652243	NaN	L		2	Left_Cerebral_White_Matter	136157
+LZ3	-8.8592129	-53.145485	28.50983	NaN	L		2	Left_Cerebral_White_Matter	101481
+LZ4	-13.127698	-47.242634	32.830547	NaN	L		2	Left_Cerebral_White_Matter	136123
+LZ5	-16.803585	-63.855934	24.963825	NaN	L		2	Left_Cerebral_White_Matter	17231
+LZ6	-30.738413	-51.689442	36.662971	NaN	L		2	Left_Cerebral_White_Matter	147062
+LZ7	-35.929886	-51.969135	35.113167	NaN	L		2	Left_Cerebral_White_Matter	131869
+LZ8	-43.394867	-59.84853	26.338955	NaN	L		2	Left_Cerebral_White_Matter	25974
+LZ9	-43.988396	-59.432533	25.729351	NaN	L		2	Left_Cerebral_White_Matter	25976
+LZ10	-45.384541	-59.963127	25.913778	NaN	L		2	Left_Cerebral_White_Matter	11871
+LZ11	-47.32233	-60.225536	25.555313	NaN	L		2	Left_Cerebral_White_Matter	35312
+LZ12	-60.59079	-53.653984	22.06566	NaN	L		2	Left_Cerebral_White_Matter	131860
+LZ13	NaN	NaN	NaN	NaN			NaN		NaN
+LZ14	NaN	NaN	NaN	NaN			NaN		NaN
+LZ15	NaN	NaN	NaN	NaN			NaN		NaN
+LZ16	NaN	NaN	NaN	NaN			NaN		NaN
+LZ17	NaN	NaN	NaN	NaN			NaN		NaN
+LZ18	NaN	NaN	NaN	NaN			NaN		NaN
+LV1	-28.11886	19.328857	-11.494518	NaN	L		11148	lh_S_circular_insula_ant	89160
+LV2	-30.07407	18.909729	-8.7940731	NaN	L		11148	lh_S_circular_insula_ant	160218
+LV3	-30.324305	19.317883	-8.4149446	NaN	L		2	Left_Cerebral_White_Matter	13568
+LV4	-33.778217	22.910328	-2.9761157	NaN	L		2	Left_Cerebral_White_Matter	155807
+LV5	-32.570274	21.534794	4.7376161	NaN	L		2	Left_Cerebral_White_Matter	6752
+LV6	-31.808701	20.870312	6.2329125	NaN	L		11150	lh_S_circular_insula_sup	1190
+LV7	NaN	NaN	NaN	NaN	L		2	Left_Cerebral_White_Matter	NaN
+LV8	-36.057304	15.325732	26.636806	NaN	L		2	Left_Cerebral_White_Matter	123061
+LV9	-36.208591	15.893593	26.783203	NaN	L		2	Left_Cerebral_White_Matter	123064
+LV10	-35.459476	11.384266	29.079941	NaN	L		2	Left_Cerebral_White_Matter	80372
+LV11	-27.008335	13.214073	44.784843	NaN	L		2	Left_Cerebral_White_Matter	29145
+LV12	-27.84049	12.684699	45.426796	NaN	L	IrritativeZone	2	Left_Cerebral_White_Matter	5908
+LV13	-32.034184	12.074173	54.96933	NaN	L	IrritativeZone	11155	lh_S_front_sup	92263
+LV14	-33.401897	11.780993	57.03756	NaN	L	IrritativeZone	11115	lh_G_front_middle	23141
+LV15	-38.34243	13.032881	57.037952	NaN	L		11115	lh_G_front_middle	129252
+LV16	-38.72266	10.701351	57.878387	NaN	L		11115	lh_G_front_middle	129250
+LV17	-39.270622	10.249341	57.728718	NaN	L		11115	lh_G_front_middle	103108
+LV18	NaN	NaN	NaN	NaN			NaN		NaN
+LP1	-37.843735	-11.131441	-5.8612723	NaN	L		11149	lh_S_circular_insula_inf	51477
+LP2	-40.743294	-8.0759993	-2.7796123	NaN	L		12	Left_Putamen	12679
+LP3	-40.705254	-6.4509873	1.96803	NaN	L		2	Left_Cerebral_White_Matter	15080
+LP4	-36.952957	0.94687307	7.9426255	NaN	L		2	Left_Cerebral_White_Matter	51489
+LP5	-34.334606	4.3772974	9.5749025	NaN	L		11150	lh_S_circular_insula_sup	141570
+LP6	-33.868568	5.5115366	10.35979	NaN	L		2	Left_Cerebral_White_Matter	25103
+LP7	NaN	NaN	NaN	NaN	L		2	Left_Cerebral_White_Matter	NaN
+LP8	NaN	NaN	NaN	NaN	L		2	Left_Cerebral_White_Matter	NaN
+LP9	NaN	NaN	NaN	NaN	L		2	Left_Cerebral_White_Matter	NaN
+LP10	-25.553684	15.380198	43.924217	NaN	L		2	Left_Cerebral_White_Matter	56892
+LP11	-24.707666	17.163807	43.505859	NaN	L		2	Left_Cerebral_White_Matter	56897
+LP12	-24.29516	18.460506	44.420887	NaN	L		11155	lh_S_front_sup	3607
+LP13	-13.960925	24.770405	58.207222	NaN	L		2	Left_Cerebral_White_Matter	109590
+LP14	-12.83369	26.545818	57.37738	NaN	L		11116	lh_G_front_sup	152618
+LP15	-9.7748661	28.717066	59.04665	NaN	L		11116	lh_G_front_sup	26934
+LP16	-7.865756	29.11517	59.677967	NaN	L		11116	lh_G_front_sup	26936
+LP17	NaN	NaN	NaN	NaN			NaN		NaN
+LP18	NaN	NaN	NaN	NaN			NaN		NaN
+LU6	NaN	NaN	NaN	NaN	L		2	Left_Cerebral_White_Matter	NaN
+LU7	-40.975807	-34.83556	9.5659866	NaN	L		11141	lh_Lat_Fis-post	141836
+LU8	-43.050865	-34.701794	9.1756277	NaN	L		11141	lh_Lat_Fis-post	16946
+LU9	-45.696831	-34.421833	9.7519703	NaN	L		2	Left_Cerebral_White_Matter	73882
+LU10	-52.821693	-46.531136	7.7006416	NaN	L		11174	lh_S_temporal_sup	120205
+LU11	-55.977417	-45.532921	7.2686477	NaN	L		11174	lh_S_temporal_sup	33655
+LU12	-58.434166	-45.602043	8.4925871	NaN	L		11174	lh_S_temporal_sup	17020
+LU13	NaN	NaN	NaN	NaN			NaN		NaN
+LU14	NaN	NaN	NaN	NaN			NaN		NaN
+LU15	NaN	NaN	NaN	NaN			NaN		NaN
+LU16	NaN	NaN	NaN	NaN			NaN		NaN
+LU17	NaN	NaN	NaN	NaN			NaN		NaN
+LU18	NaN	NaN	NaN	NaN			NaN		NaN
+ROC1	6.1742387	-87.050491	-1.0099201	NaN	R		12122	rh_G_oc-temp_med-Lingual	120812
+ROC2	9.4069977	-83.313728	1.8940623	NaN	R		12145	rh_S_calcarine	64972
+ROC3	11.366829	-82.674881	2.8198762	NaN	R		12145	rh_S_calcarine	130680
+ROC4	14.143066	-81.509987	4.8849773	NaN	R		12145	rh_S_calcarine	44696
+ROC5	14.825747	-81.595848	5.8397465	NaN	R		41	Right_Cerebral_White_Matter	156776
+ROC6	31.589701	-82.730995	4.7290726	NaN	R		41	Right_Cerebral_White_Matter	52318
+ROC7	32.606354	-82.035843	4.3839669	NaN	R		41	Right_Cerebral_White_Matter	112606
+ROC8	35.032631	-81.883026	3.9997711	NaN	R		12158	rh_S_oc_middle_and_Lunatus	158653
+ROC9	37.973164	-80.907875	5.3103914	NaN	R	SOZ	12158	rh_S_oc_middle_and_Lunatus	112563
+ROC10	41.092049	-79.235069	7.2753234	NaN	R	SOZ	12158	rh_S_oc_middle_and_Lunatus	27919
+ROC11	51.670574	-72.095169	9.9144344	NaN	R		12119	rh_G_occipital_middle	87716
+ROC12	NaN	NaN	NaN	NaN			NaN		NaN
+ROC13	NaN	NaN	NaN	NaN			NaN		NaN
+ROC14	NaN	NaN	NaN	NaN			NaN		NaN
+ROC15	NaN	NaN	NaN	NaN			NaN		NaN
+RD1	19.25897	-48.752171	-3.9255581	NaN	R		12122	rh_G_oc-temp_med-Lingual	66332
+RD2	21.347708	-50.950493	-1.9217129	NaN	R		12145	rh_S_calcarine	139212
+RD3	22.904526	-53.520306	0.1957204	NaN	R		12145	rh_S_calcarine	102935
+RD4	24.782856	-55.051746	1.6082191	NaN	R		41	Right_Cerebral_White_Matter	157220
+RD5	29.025436	-58.274181	-6.7335806	NaN	R		41	Right_Cerebral_White_Matter	1769
+RD6	26.993763	-59.165443	3.2389321	NaN	R		41	Right_Cerebral_White_Matter	51915
+RD7	NaN	NaN	NaN	NaN	R		41	Right_Cerebral_White_Matter	NaN
+RD8	46.956184	-61.010071	-10.721942	NaN	R		41	Right_Cerebral_White_Matter	7140
+RD9	45.29995	-64.432388	4.2050428	NaN	R		41	Right_Cerebral_White_Matter	14002
+RD10	45.934727	-63.810841	3.9355946	NaN	R		41	Right_Cerebral_White_Matter	98931
+RD11	47.379772	-63.05241	3.5988266	NaN	R		12160	rh_S_occipital_ant	130771
+RD12	47.816315	-61.836395	2.6964142	NaN	R		12138	rh_G_temporal_middle	57837
+RD13	48.763172	-59.528389	0.87790585	NaN	R		12138	rh_G_temporal_middle	3924
+RD14	49.406311	-59.210976	0.46426708	NaN	R		12138	rh_G_temporal_middle	57849
+RD15	NaN	NaN	NaN	NaN			NaN		NaN
+RT1	18.596676	-36.379108	-15.210924	NaN	R		41	Right_Cerebral_White_Matter	53013
+RT2	22.44865	-38.542969	-15.203804	NaN	R		12162	rh_S_oc-temp_med_and_Lingual	161156
+RT3	34.287216	-36.470631	-8.5540562	NaN	R		12162	rh_S_oc-temp_med_and_Lingual	55908
+RT4	36.04739	-36.143665	-8.0254993	NaN	R		53	Right_Hippocampus	41675
+RT5	37.183361	-34.774708	-8.109868	NaN	R		53	Right_Hippocampus	40098
+RT6	NaN	NaN	NaN	NaN	R		41	Right_Cerebral_White_Matter	NaN
+RT7	59.025684	-56.82967	9.8762598	NaN	R		41	Right_Cerebral_White_Matter	118375
+RT8	59.85442	-57.513817	8.6354847	NaN	R		41	Right_Cerebral_White_Matter	118380
+RT9	61.338856	-57.849205	7.4395661	NaN	R		41	Right_Cerebral_White_Matter	162475
+RT10	62.913086	-57.222027	5.6610937	NaN	R		12173	rh_S_temporal_inf	10092
+RT11	61.766243	-50.321957	-6.0661383	NaN	R		12138	rh_G_temporal_middle	70200
+RT12	NaN	NaN	NaN	NaN			NaN		NaN
+RT13	NaN	NaN	NaN	NaN			NaN		NaN
+RT14	NaN	NaN	NaN	NaN			NaN		NaN
+RT15	NaN	NaN	NaN	NaN			NaN		NaN
+EKG	NaN	NaN	NaN	NaN			NaN		NaN
+StimulusCode	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput1	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput2	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput3	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput4	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput5	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput6	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput7	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput8	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput9	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput10	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput11	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput12	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput13	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput14	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput15	NaN	NaN	NaN	NaN			NaN		NaN
+DigitalInput16	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerLeftEyeValidity	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerLeftPupilSize	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerLeftEyeGazeX	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerLeftEyeGazeY	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerLeftEyePosX	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerLeftEyePosY	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerLeftEyeDist	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerRightEyeValidity	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerRightPupilSize	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerRightEyeGazeX	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerRightEyeGazeY	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerRightEyePosX	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerRightEyePosY	NaN	NaN	NaN	NaN			NaN		NaN
+EyetrackerRightEyeDist	NaN	NaN	NaN	NaN			NaN		NaN

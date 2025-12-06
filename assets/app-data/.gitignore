@@ -1,0 +1,8 @@
+# Ignore brain model files (can be large, ~500MB)
+# Add your brain models here but don't commit them to git
+freesurfer-models/*
+# Keep the directory structure
+!freesurfer-models/.gitkeep
+# Keep documentation and examples
+!*.md
+!.gitkeep
