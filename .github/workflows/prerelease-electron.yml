@@ -1,12 +1,6 @@
 name: Pre-release Electron (macOS)
 
 on:
-  workflow_run:
-    workflows: ["Build WASM Site"]
-    types:
-      - completed
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -15,9 +9,7 @@ permissions:
 jobs:
   build-electron-macos:
     runs-on: macos-latest
-    if: |
-      github.repository == 'rave-ieeg/rave-wasm' && 
-      (github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch')
+    if: github.repository == 'rave-ieeg/rave-wasm'
     
     steps:
       - name: Checkout repository

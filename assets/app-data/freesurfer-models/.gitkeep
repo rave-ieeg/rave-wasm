@@ -1,5 +1,4 @@
 # Place FreeSurfer brain model files in subdirectories:
 # - fsaverage/
-# - MNI152/
 # 
 # Manifests will be auto-generated during compilation.
