@@ -10,8 +10,16 @@
 #' `shinylive` CRAN release might be outdated.
 NULL
 
-use_cache <- TRUE
+debug <- TRUE
 
+if(debug && dipsaus::rs_avail() && !is.na(dipsaus::rs_active_project())) {
+  setwd(dipsaus::rs_active_project())
+}
+
+use_cache <- identical(Sys.getenv("RAVE_WASM_CACHE", unset = ifelse(debug, "TRUE", "FALSE")), "TRUE")
+base_url <- Sys.getenv("RAVE_WASM_BASE_URL", unset = ifelse(debug, "http://127.0.0.1:8000", "https://rave.wiki/rave-wasm"))
+
+# ---- Step 1: download shinylive assets ---------------------------------------
 # Make sure the version is the latest to be in consistent with the latest R version
 # pak::pak("posit-dev/r-shinylive")
 shinylive_asset_version <- shinylive::assets_version()
@@ -24,6 +32,17 @@ repos[['rave-ieeg']] <- "https://rave-ieeg.r-universe.dev"
 repos <- repos[unique(c("rave-ieeg", names(repos)))]
 options(repos = unlist(repos, use.names = TRUE))
 
+# ---- Step 2: build site manifest ---------------------------------------------
+jsonlite::write_json(
+  path = "www/build-manifest.json",
+  list(
+    build_timestamp = format(Sys.time(), format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+    base_url = base_url,
+    shinylive_asset_version = shinylive_asset_version
+  )
+)
+
+# ---- Step 3: build site/ -----------------------------------------------------
 # Remove site folder to avoid old files
 if(!use_cache) {
   unlink("site/", recursive = TRUE)
@@ -94,7 +113,6 @@ apps <- lapply(app_names, function(app_name) {
 })
 
 app_table <- do.call("rbind", apps)
-
 ul_html <- shiny::tags$ul(lapply(apps, function(item) {
   shiny::tags$li(shiny::a(
     item$title,
@@ -103,7 +121,22 @@ ul_html <- shiny::tags$ul(lapply(apps, function(item) {
   ))
 }))
 
-# save index.html
+# Inject: modify shinylive.js
+shinylive_js <- readLines('./site/shinylive/shinylive.js')
+# Find line 
+anchor_text <- 'runApp(appRoot, appMode, { startFiles: appFiles }, appEngine);'
+inject_text <- 'const urlObj={}; urlParams.forEach((k, v) => {urlObj[k] = v;}); appFiles.push({"name" : ".urlParams", "content" : JSON.stringify(urlObj) });'
+
+inject_index <- which(trimws(shinylive_js) == anchor_text)
+if(trimws(shinylive_js[inject_index-1]) != inject_text) {
+  shinylive_js[inject_index] <- paste(collapse = "\n", c(
+    inject_text, anchor_text
+  ))
+  
+  writeLines(shinylive_js, './site/shinylive/shinylive.js', sep = "\n")
+}
+
+# ---- Step 4: build root index.html -------------------------------------------
 source("www/r/shiny-helper.r")
 index_html <- bslib_page_template(
   sidebar = NULL,
@@ -141,6 +174,91 @@ index_html <- bslib_page_template(
 htmltools::save_html(index_html, "site/index.html")
 
 
+# ---- Step 5: Generate manifests ----------------------------------------------
+# Generate manifests for FreeSurfer brain models
+freesurfer_models_dir <- "assets/app-data/freesurfer-models"
+if (dir.exists(freesurfer_models_dir)) {
+  model_dirs <- list.dirs(freesurfer_models_dir, full.names = FALSE, recursive = FALSE)
+  model_dirs <- model_dirs[!startsWith(model_dirs, ".")]
+  
+  if (length(model_dirs) > 0) {
+    message("Generating brain model manifests...")
+    
+    # Get version as YYYY.MM.DD
+    build_version <- format(Sys.Date(), "%Y.%m.%d")
+    
+    for (model_name in model_dirs) {
+      model_path <- file.path(freesurfer_models_dir, model_name)
+      
+      # Get all files recursively
+      all_files <- list.files(
+        model_path,
+        all.files = FALSE,
+        full.names = TRUE,
+        recursive = TRUE,
+        include.dirs = FALSE
+      )
+      
+      if (length(all_files) == 0) {
+        message(sprintf("  Skipping %s (no files found)", model_name))
+        next
+      }
+      
+      # Build file list with relative paths and sizes
+      file_list <- lapply(all_files, function(file_path) {
+        rel_path <- sub(paste0("^", model_path, "/"), "", file_path)
+        file_info <- file.info(file_path)
+        list(
+          path = rel_path,
+          size = as.integer(file_info$size),
+          digest = dipsaus::digest(file_path)
+        )
+      })
+      
+      # Create manifest
+      manifest <- list(
+        name = model_name,
+        path = sprintf("freesurfer-models/%s", model_name),
+        version = build_version,
+        cache_key = paste0("rave-", model_name, "-v", build_version),
+        files = file_list
+      )
+      
+      manifest_digest <- dipsaus::digest(manifest)
+      manifest$digest <- manifest_digest
+      
+      
+      # check existing manifest
+      manifest_filename <- paste0(model_name, "_manifest.json")
+      manifest_path <- file.path("assets/app-data/freesurfer-models", manifest_filename)
+      if(file.exists(manifest_path)) {
+        try({
+          existing_manifest <- dipsaus::read_json(manifest_path)
+          if(identical(existing_manifest$digest, manifest_digest)) {
+            message(sprintf("  Skipping %s (unchanged)", model_name))
+            next
+          }
+        })
+      }
+      
+      # Write manifest to assets directory
+      dir.create(dirname(manifest_path), showWarnings = FALSE, recursive = TRUE)
+      writeLines(
+        jsonlite::toJSON(manifest, auto_unbox = TRUE, pretty = TRUE),
+        manifest_path
+      )
+      
+      total_size <- sum(sapply(file_list, function(x) x$size))
+      message(sprintf("  Generated %s: %d files, %.2f MB", 
+                      manifest_filename, 
+                      length(file_list), 
+                      total_size / (1024^2)))
+    }
+  }
+}
+
+
+# ---- Step 6: include static assets -------------------------------------------
 # copy the static folders (include hidden files like .nojekyll)
 assets <- list.files(
   "assets",
@@ -154,12 +272,12 @@ lapply(assets, function(f) {
   src <- file.path("assets", f)
   dst <- file.path("site", f)
   dir.create(dirname(dst), showWarnings = FALSE, recursive = TRUE)
-  file.copy(from = src, to = dst, overwrite = FALSE, recursive = FALSE)
-})
+  file.copy(from = src, to = dst, overwrite = TRUE, recursive = FALSE)
+}) |> invisible()
 
-
-if(interactive() && rstudioapi::isAvailable()) {
+# ---- Step 7: Preview ---------------------------------------------------------
+if(debug && interactive() && rstudioapi::isAvailable()) {
   httpuv::stopAllServers()
-  httpuv::runStaticServer("site", background = TRUE)
+  httpuv::runStaticServer("site", background = TRUE, port = 8000)
 }
 

@@ -1,4 +1,15 @@
+if(dipsaus::rs_avail() && !is.na(dipsaus::rs_active_project())) {
+  local({
+    ctx <- rstudioapi::getSourceEditorContext()
+    if(length(ctx$path) == 1) {
+      setwd(dirname(ctx$path))
+    }
+  })
+  library(ieegio)
+  library(bidsr)
+}
 source("www/r/shiny-helper.r", local = TRUE, chdir = FALSE)
+source("www/r/coordinate-helper.r", local = TRUE, chdir = FALSE)
 
 ui <- function() {
   bslib_page_template(
@@ -34,6 +45,10 @@ ui <- function() {
         shiny::fileInput(
           inputId = ns("electrode_coord"),
           label = "Electrode coordinate"
+        ),
+        dipsaus::actionButtonStyled(
+          inputId = ns("render"),
+          label = "Start rendering brain"
         )
       ),
       shiny::column(
@@ -75,38 +90,82 @@ server <- function(input, output, session) {
   dipsaus::observeDirectoryProgress("directory", session = session)
   brain_proxy <- threeBrain::brain_proxy(outputId = "viewer", session = session)
   
-  # coordinate_space
   
-  set_brain <- function() {
-    if(is.null(local_data$brain)) {
-      message("No brain models")
-      return(local_data$brain)
-    }
-    coord_table <- local_data$coord_table
-    if(!is.data.frame(coord_table) || !nrow(coord_table)) {
-      message("No coordinate table")
-      return(local_data$brain)
-    }
-    coord_sys <- local_data$coord_sys
-    if(!length(coord_sys)) {
-      coord_sys <- "scannerRAS"
-    }
-    message("Setting electrodes in coordinate system: ", coord_sys)
-    local_data$brain$set_electrodes(local_data$coord_table, coord_sys = coord_sys)
-    local_data$brain$set_electrode_values()
+  # Load electrode table
+  load_coord_table <- function(coordinate_file, filename = basename(coordinate_file)) {
+    parsed <- parse_electrode_coordinate(coordinate_file, filename = filename)
     
-    value_table <- local_data$value_table
-    if(is.data.frame(value_table) && nrow(value_table)) {
-      message("Setting electrode values")
-      # print(value_table)
-      local_data$brain$set_electrode_values(value_table)
+    # Check if MNI305 is available, then MNI152, then native
+    brain_model <- "native subject"
+    if("MNI305" %in% parsed$coord_sys) {
+      brain_model <- "fsaverage (MNI305)"
+    } else if ("MNI152" %in% parsed$coord_sys) {
+      brain_model <- "MNI152"
     }
-    return(local_data$brain)
+    local_data$parsed_coordinates <- parsed
+    shiny::updateSelectInput(session = session, inputId = "coordinate_space", selected = brain_model)
+  }
+  
+  # Parse user input coordinate file
+  shiny::bindEvent(
+    safe_observe({
+      electrode_coord <- input$electrode_coord
+      if(is.null(electrode_coord)) {
+        # give users a default one
+        coordinate_file <- request_asset('bids-examples/NSD-electrodes/sub-06_ses-ieeg01_space-MNI305_electrodes.tsv')
+        load_coord_table(coordinate_file)
+        local_reactive$force_render <- Sys.time()
+      } else {
+        load_coord_table(electrode_coord$datapath, filename = electrode_coord$name)
+      }
+    }),
+    input$electrode_coord,
+    ignoreNULL = FALSE, ignoreInit = FALSE
+  )
+  
+  set_coordsys <- function(coord_space) {
+    switch (
+      coord_space,
+      "fsaverage (MNI305)" = {
+        load_shared_assets(
+          manifest_name = "freesurfer-models/fsaverage_manifest.json",
+          callback = function(...) {
+            load_brain("../../assets/app-data/freesurfer-models/fsaverage/", "MNI305")
+          }
+        )
+      },
+      "MNI152" = {
+        load_shared_assets(
+          manifest_name = "freesurfer-models/cvs_avg35_inMNI152_manifest.json",
+          callback = function(...) {
+            load_brain("../../assets/app-data/freesurfer-models/cvs_avg35_inMNI152/", "MNI152")
+          }
+        )
+      },
+      {
+        load_brain(local_data$native_fs_path)
+      }
+    )
   }
   
   shiny::bindEvent(
     safe_observe({
-      
+      set_coordsys(input$coordinate_space)
+    }),
+    input$render,
+    ignoreNULL = TRUE, ignoreInit = TRUE
+  )
+  
+  shiny::bindEvent(
+    safe_observe({
+      set_coordsys(input$coordinate_space)
+    }),
+    local_reactive$force_render, 
+    ignoreNULL = TRUE, ignoreInit = FALSE
+  )
+  
+  shiny::bindEvent(
+    safe_observe({
       files <- input$directory
       upload_dir <- attr(files, "upload_dir")
       if(
@@ -149,67 +208,166 @@ server <- function(input, output, session) {
       }
       subject_fspath <- file.path(upload_dir, included_dirs)
       
-      local_reactive$needs_update <- Sys.time()
-      local_data$coord_table <- NULL
-      local_data$value_table <- NULL
-      local_data$brain <- threeBrain::threeBrain(path = subject_fspath,
-                                                 subject_code = included_dirs,
-                                                 surface_types = "inflated")
-      set_brain()
+      local_data$native_fs_path <- subject_fspath
+      # 
+      # local_reactive$needs_update <- Sys.time()
+      # local_data$coord_table <- NULL
+      # local_data$value_table <- NULL
+      # local_data$brain <- threeBrain::threeBrain(path = subject_fspath,
+      #                                            subject_code = included_dirs,
+      #                                            surface_types = "inflated")
+      # set_brain()
     }),
     input$directory, 
     ignoreNULL = TRUE, ignoreInit = TRUE
   )
   
-  shiny::bindEvent(
-    safe_observe({
-      csv_path <- input$electrode_coord$datapath[[1]]
-      if(file_ext(csv_path) == "tsv") {
-        # BIDS
-        coord_table <- read.table(csv_path, header = TRUE, sep = "\t", na.strings = "n/a")
-      } else {
-        # native
-        coord_table <- read.csv(csv_path)
-      }
-      nr <- nrow(coord_table)
-      if(!nr) {
-        return()
-      }
-      if(!length(coord_table$Electrode)) {
-        coord_table$Electrode <- coord_table$Channel %||% coord_table$channel %||% seq_len(nr)
-      }
-      if(!length(coord_table$Label)) {
-        coord_table$Label <- coord_table$name %||% coord_table$label %||% sprintf("Unknown%04d", seq_len(nr))
-      }
-      nms <- names(coord_table)
-      if(all(c("Coord_x", "Coord_y", "Coord_z") %in% nms)) {
-        coord_sys <- "tkrRAS"
-      } else if(all(c("T1R", "T1A", "T1S") %in% nms)) {
-        coord_sys <- "scannerRAS"
-      } else if(all(c("MNI305_x", "MNI305_y", "MNI305_z") %in% nms)) {
-        coord_sys <- "MNI305"
-      } else if(all(c("MNI152_x", "MNI152_y", "MNI152_z") %in% nms)) {
-        coord_sys <- "MNI152"
-      } else if(all(c("x", "y", "z") %in% nms)) {
-        coord_sys <- "scannerRAS"
-      } else {
-        shiny::showNotification("Invalid coordinate table: must contains `x`, `y`, `z` columns (T1 scanner RAS) or from RAVE/YAEL electrodes.csv (contains `T1R`, `T1A`, `T1S` columns)", type = "error")
-        return()
-      }
-      coord_table$Subject <- NULL
-      coord_table$SubjectCode <- NULL
-      local_data$coord_table <- coord_table
-      local_data$coord_sys <- coord_sys
-      set_brain()
-      local_reactive$needs_update <- Sys.time()
-    }),
-    input$electrode_coord, ignoreNULL = TRUE, ignoreInit = TRUE
-  )
+  load_brain <- function(fs_path, type = c("scannerRAS", "MNI152", "MNI305")) {
+    if(length(fs_path) != 1 || !dir.exists(fs_path)) { return() }
+    type <- match.arg(type)
+    brain <- threeBrain::threeBrain(
+      path = fs_path,
+      subject_code = basename(fs_path),
+      surface_types = c("inflated", "sphere", "sphere.reg")
+    )
+    if(is.null(brain)) { return() }
+    # get pial and sphere.reg paths
+    pial_datanames <- names(brain$surfaces$pial$group$group_data)
+    pial_lh_name <- pial_datanames[startsWith(pial_datanames, "free_vertices_FreeSurfer Left")]
+    pial_rh_name <- pial_datanames[startsWith(pial_datanames, "free_vertices_FreeSurfer Right")]
+    
+    
+    sphere.reg_datanames <- names(brain$surfaces$sphere.reg$group$group_data)
+    sphere.reg_lh_name <- sphere.reg_datanames[startsWith(sphere.reg_datanames,
+                                                          "free_vertices_FreeSurfer Left")]
+    sphere.reg_rh_name <- sphere.reg_datanames[startsWith(sphere.reg_datanames,
+                                                          "free_vertices_FreeSurfer Right")]
+    
+    surface_normalization_needed <- FALSE
+    if(
+      length(pial_lh_name) > 0 &&
+      length(pial_rh_name) > 0 &&
+      length(sphere.reg_lh_name) > 0 &&
+      length(sphere.reg_rh_name) > 0
+    ) {
+      pial_lh_name <- pial_lh_name[[1]]
+      pial_rh_name <- pial_rh_name[[1]]
+      sphere.reg_lh_name <- sphere.reg_lh_name[[1]]
+      sphere.reg_rh_name <- sphere.reg_rh_name[[1]]
+      surface_normalization_needed <- TRUE
+    }
+    
+    # calculate sphere.reg xyz
+    
+    parsed_coordinates <- as.list(local_data$parsed_coordinates)
+    coords <- parsed_coordinates[[type]]
+    coord_table <- parsed_coordinates$table
+    
+    # check if the coordinate exists
+    if(surface_normalization_needed &&
+       all(c("Sphere_x", "Sphere_y", "Sphere_z", "DistanceShifted", "Hemisphere") %in% 
+           names(coord_table))) {
+      surface_normalization_needed <- FALSE
+    }
+    if(surface_normalization_needed && 
+       length(parsed_coordinates$coord_sys) && 
+       length(coords)) {
+      
+      coords[!complete.cases(coords), ] <- 0
+      isvalid <- rowSums(coords^2) > 0
+      
+      pial_lh_path <- brain$surfaces$pial$group$group_data[[pial_lh_name]]$absolute_path
+      pial_rh_path <- brain$surfaces$pial$group$group_data[[pial_rh_name]]$absolute_path
+      sphere.reg_lh_path <- brain$surfaces$sphere.reg$group$group_data[[sphere.reg_lh_name]]$absolute_path
+      sphere.reg_rh_path <- brain$surfaces$sphere.reg$group$group_data[[sphere.reg_rh_name]]$absolute_path
+      
+      # read in pial and sphere.reg
+      pial_lh <- ieegio::read_surface(pial_lh_path)
+      pial_lh_verts <- pial_lh$geometry$transforms[[1]] %*% pial_lh$geometry$vertices
+      pial_lh_verts <- pial_lh_verts[1:3, , drop = FALSE]
+      
+      pial_rh <- ieegio::read_surface(pial_rh_path)
+      pial_rh_verts <- pial_rh$geometry$transforms[[1]] %*% pial_rh$geometry$vertices
+      pial_rh_verts <- pial_rh_verts[1:3, , drop = FALSE]
+      
+      sphere.reg_lh <- ieegio::read_surface(sphere.reg_lh_path)
+      sphere.reg_lh_verts <- sphere.reg_lh$geometry$vertices
+      
+      sphere.reg_rh <- ieegio::read_surface(sphere.reg_rh_path)
+      sphere.reg_rh_verts <- sphere.reg_rh$geometry$vertices
+      
+      sphere_coords <- apply(as.matrix(coords), 1, function(x) {
+        if(sum(x^2) == 0) {
+          return(data.frame(
+            Sphere_x = 0,
+            Sphere_y = 0,
+            Sphere_z = 0,
+            DistanceShifted = 0,
+            Hemisphere = NA
+          ))
+        }
+        
+        # calculate closest node
+        dist_l <- colSums((pial_lh_verts - x)^2)
+        idx_l <- which.min(dist_l)
+        dist_l <- sqrt(dist_l[idx_l])
+        
+        dist_r <- colSums((pial_rh_verts - x)^2)
+        idx_r <- which.min(dist_r)
+        dist_r <- sqrt(dist_r[idx_r])
+        
+        if(dist_l < dist_r) {
+          s <- sphere.reg_lh_verts[, idx_l]
+          return(data.frame(
+            Sphere_x = s[[1]],
+            Sphere_y = s[[2]],
+            Sphere_z = s[[3]],
+            DistanceShifted = sqrt(dist_l),
+            Hemisphere = "Left"
+          ))
+        } else {
+          s <- sphere.reg_rh_verts[, idx_r]
+          return(data.frame(
+            Sphere_x = s[[1]],
+            Sphere_y = s[[2]],
+            Sphere_z = s[[3]],
+            DistanceShifted = sqrt(dist_r),
+            Hemisphere = "Right"
+          ))
+        }
+        
+      }, simplify = FALSE)
+      sphere_coords <- do.call("rbind", sphere_coords)
+      
+      coord_table$Sphere_x <- sphere_coords$Sphere_x
+      coord_table$Sphere_y <- sphere_coords$Sphere_y
+      coord_table$Sphere_z <- sphere_coords$Sphere_z
+      coord_table$DistanceShifted <- sphere_coords$DistanceShifted
+      coord_table$Hemisphere <- sphere_coords$Hemisphere
+      
+    }
+    
+    position_names <- names(parsed_coordinates[[type]])
+    if(!length(position_names)) {
+      position_names <- c("x", "y", "z")
+    }
+    coord_table$Subject <- NULL
+    coord_table$SubjectCode <- NULL
+    brain$set_electrodes(
+      electrodes = coord_table,
+      coord_sys = type,
+      position_names = position_names,
+      priority = "sphere"
+    )
+    
+    local_data$brain <- brain
+    local_reactive$needs_update <- Sys.time()
+  }
   
   shiny::bindEvent(
     safe_observe({
       csv_path <- input$electrode_coord$datapath[[1]]
-      if(file_ext(csv_path) == "tsv") {
+      if(file_ext(csv_path) == ".tsv") {
         # BIDS
         value_table <- read.table(csv_path, header = TRUE, sep = "\t", na.strings = "n/a")
       } else {
@@ -240,43 +398,53 @@ server <- function(input, output, session) {
   )
   
   output$viewer <- threeBrain::renderBrain({
-    shiny::validate(shiny::need(!isFALSE(local_reactive$needs_update),
-      message = "Please drag & drop a NIfTI/FreeSurfer folder"
-    ))
+    shiny::validate(
+      shiny::need(!isFALSE(local_reactive$needs_update), 
+      message = "Please set brain and click on start rendering")
+    )
+    
     brain <- local_data$brain
     if(is.null(brain)) {
-      stop("Please load a NIfTI file or a FreeSurfer folder first!")
+      if(coord_space == "native subject") {
+        stop("Please load a NIfTI file or a FreeSurfer folder first!")
+      } else {
+        stop("Loading brain model, please wait...")
+      }
     }
-    brain$render(outputId = "viewer", session = session, show_modal = FALSE, side_canvas = TRUE)
+    brain$render(
+      outputId = "viewer",
+      session = session,
+      show_modal = FALSE,
+      side_canvas = TRUE
+    )
   })
   
-  shiny::bindEvent(
-    safe_observe({
-      message("Preparing viewer for download")
-      brain <- set_brain()
-      if(is.null(brain)) {
-        shiny::showNotification("Invalid viewer files. Please load the NIfTI/FreeSurfer files.", type = "error")
-        return()
-      }
-      
-      # Generate viewer HTML
-      viewer <- brain$render(outputId = "viewer", session = session, show_modal = FALSE)
-      tfpath <- tempfile(fileext = ".html")
-      threeBrain::save_brain(viewer, title = "RAVE Viewer", path = tfpath)
-      
-      # Stream file to client and cleanup
-      wasm_send_file_download(
-        session = session,
-        filepath = tfpath,
-        filename = "RAVEViewer.html",
-        cleanup = TRUE
-      )
-    }),
-    input$download,
-    ignoreNULL = TRUE,
-    ignoreInit = TRUE
-  )
+  # shiny::bindEvent(
+  #   safe_observe({
+  #     message("Preparing viewer for download")
+  #     brain <- set_brain()
+  #     if(is.null(brain)) {
+  #       shiny::showNotification("Invalid viewer files. Please load the NIfTI/FreeSurfer files.", type = "error")
+  #       return()
+  #     }
+  #     
+  #     # Generate viewer HTML
+  #     viewer <- brain$render(outputId = "viewer", session = session, show_modal = FALSE)
+  #     tfpath <- tempfile(fileext = ".html")
+  #     threeBrain::save_brain(viewer, title = "RAVE Viewer", path = tfpath)
+  #     
+  #     # Stream file to client and cleanup
+  #     wasm_send_file_download(
+  #       session = session,
+  #       filepath = tfpath,
+  #       filename = "RAVEViewer.html",
+  #       cleanup = TRUE
+  #     )
+  #   }),
+  #   input$download,
+  #   ignoreNULL = TRUE,
+  #   ignoreInit = TRUE
+  # )
 }
 
-app <- start_app(ui, server)
-print(app)
+start_app(ui(), server)

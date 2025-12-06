@@ -1,3 +1,7 @@
+# NOTE: This file is located in www/r/ and is symlinked to from apps/*/www/
+# When updating this file, changes will affect ALL apps that use it.
+# The symlink structure: apps/*/www -> /project_root/www/
+
 if(FALSE) {
   # trigger WASM
   library(shiny)
@@ -6,6 +10,8 @@ if(FALSE) {
   library(yaml)
   library(bslib)
 }
+
+build_info <- dipsaus::read_json("www/build-manifest.json", simplifyVector = TRUE)
 
 if(file.exists("manifest.yaml")) {
   module_info <- yaml::read_yaml("manifest.yaml")
@@ -24,6 +30,7 @@ if(file.exists("./CITATION")) {
   CITATION <- c(utils::readCitationFile("CITATION"), CITATION)
 }
 
+work_path <- getwd()
 
 safe_wrap_expr <- function (expr, onFailure = NULL, finally = {}) {
   expr_ <- substitute(expr)
@@ -148,6 +155,75 @@ bslib_theme <- function() {
     )
   )
   theme
+}
+
+request_asset <- function(asset_name) {
+  # asset_name <- "freesurfer-models/cvs_avg35_inMNI152_manifest.json"
+  
+  dst_path <- file.path(work_path, "../../assets/app-data/", asset_name, fsep = "/")
+  dst_path <- fs::path_norm(dst_path)
+  
+  if(!file.exists(dst_path)) {
+    # request: download
+    src_path <- file.path(gsub("[/]+$", "", build_info$base_url), "app-data", asset_name, fsep = "/")
+    if(endsWith(src_path, "manifest.json")) {
+      dst_path <- src_path
+    } else {
+      dir.create(dirname(dst_path), showWarnings = FALSE, recursive = TRUE)
+      utils::download.file(url = src_path, destfile = dst_path)
+    }
+  }
+  dst_path
+}
+
+# R-based lazy asset loader for WASM environment
+# Downloads brain model files and loads them into threeBrain
+load_shared_assets <- function(manifest_name, callback = NULL) {
+  # manifest_name <- "freesurfer-models/cvs_avg35_inMNI152_manifest.json"
+  manifest_path <- request_asset(manifest_name)
+  
+  manifest_info <- dipsaus::read_json(manifest_path)
+  
+  asset_prefix <- gsub("[/]+$", "", manifest_info$path)
+  
+  n_files <- length(manifest_info$files)
+  
+  callback_ <- function(...) {
+    if(is.function(callback)) {
+      callback(...)
+    }
+    return()
+  }
+  
+  # Create progress
+  promises::then(
+    
+    promises::promise(function(resolve, reject) {
+      tryCatch(
+        {
+          progress <- dipsaus::progress2(
+            title = sprintf("Loading %s", manifest_info$name),
+            max = n_files,
+            shiny_auto_close = TRUE
+          )
+          
+          res <- lapply(seq_len(n_files), function(ii) {
+            file_info <- manifest_info$files[[ii]]
+            progress$inc(file_info$path)
+            asset_name <- file.path(asset_prefix, file_info$path)
+            request_asset(asset_name)
+          })
+          
+          resolve(unlist(res))
+        },
+        error = function(e) {
+          reject(e)
+        }
+      )
+    }),
+    
+    onFulfilled = callback_, onRejected = callback_
+  )
 }
 
 bslib_page_template <- function(..., sidebar, fluid = TRUE, window_title = module_title) {
