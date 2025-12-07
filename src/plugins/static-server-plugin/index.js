@@ -26,6 +26,37 @@ class StaticServerPlugin {
   }
 
   /**
+   * Modify app.json content to update www/build-manifest.json base_url
+   * @param {string} content - Original app.json content
+   * @returns {string} - Modified app.json content
+   */
+  _modifyAppJson(content) {
+    try {
+      const appData = JSON.parse(content);
+      
+      // Find and modify the www/build-manifest.json entry
+      for (const item of appData) {
+        if (item.name === 'www/build-manifest.json' && item.type === 'text') {
+          try {
+            const manifestData = JSON.parse(item.content);
+            // Update base_url to point to the current server
+            manifestData.base_url = [`http://localhost:${this.port}`];
+            item.content = JSON.stringify(manifestData);
+          } catch (manifestErr) {
+            console.error('Failed to parse build-manifest.json content:', manifestErr);
+          }
+          break;
+        }
+      }
+      
+      return JSON.stringify(appData);
+    } catch (err) {
+      console.error('Failed to modify app.json:', err);
+      return content;
+    }
+  }
+
+  /**
    * Create HTTP server
    * @returns {Promise<number>} - The port number
    */
@@ -58,16 +89,24 @@ class StaticServerPlugin {
             return;
           }
           
+          // Check if this is an app.json file that needs modification
+          const isAppJson = filePath.endsWith('/app.json');
+          
           // Set appropriate content type
           const mimeType = lookup(fullPath) || 'application/octet-stream';
           const headers = {
             'Content-Type': mimeType,
             'Cross-Origin-Opener-Policy': 'same-origin',
             'Cross-Origin-Embedder-Policy': 'require-corp',
-            'Service-Worker-Allowed': '/',
-            'Content-Length': stats.size,
-            'Accept-Ranges': 'bytes'
+            'Service-Worker-Allowed': '/'
           };
+          
+          // For app.json files, we need to read, modify, and send
+          // so we can't set Content-Length upfront
+          if (!isAppJson) {
+            headers['Content-Length'] = stats.size;
+          }
+          headers['Accept-Ranges'] = 'bytes';
           
           // Aggressive caching for WASM and static assets
           if (fullPath.endsWith('.wasm') || fullPath.endsWith('.data') || 
@@ -83,9 +122,30 @@ class StaticServerPlugin {
             // Add CORS headers for module service workers
             headers['Access-Control-Allow-Origin'] = '*';
             headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
+          } else if (isAppJson) {
+            // app.json files should not be cached as they're dynamically modified
+            headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
           } else {
             // HTML and other files - short cache
             headers['Cache-Control'] = 'public, max-age=3600'; // 1 hour
+          }
+          
+          // Handle app.json files specially - read, modify, and send
+          if (isAppJson) {
+            fs.readFile(fullPath, 'utf8', (readErr, content) => {
+              if (readErr) {
+                console.error('Error reading app.json:', readErr);
+                res.writeHead(500);
+                res.end('Error reading file');
+                return;
+              }
+              
+              const modifiedContent = this._modifyAppJson(content);
+              headers['Content-Length'] = Buffer.byteLength(modifiedContent, 'utf8');
+              res.writeHead(200, headers);
+              res.end(modifiedContent);
+            });
+            return;
           }
           
           res.writeHead(200, headers);
