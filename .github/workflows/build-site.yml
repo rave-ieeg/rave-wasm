@@ -79,12 +79,12 @@ jobs:
             ))
           '
       
-      - name: Generate THIRD-PARTY-NOTICES.md
-        run: npm run licenses
-
       - name: Run compile.r
         run: Rscript compile.r
       
+      - name: Generate THIRD-PARTY-NOTICES.md
+        run: npm run licenses
+
       - name: Upload site artifact
         uses: actions/upload-artifact@v4
         with:
