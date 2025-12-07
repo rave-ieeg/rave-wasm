@@ -18,6 +18,12 @@ contextBridge.exposeInMainWorld(
     
     // Get app version
     getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
+    
+    // Check if running in debug mode
+    isDebug: () => ipcRenderer.invoke('app:isDebug'),
+    
+    // Open DevTools (only works in debug mode)
+    openDevTools: () => ipcRenderer.invoke('app:openDevTools'),
 
     // R Plugin APIs
     r: {

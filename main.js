@@ -161,6 +161,19 @@ function setupLaunchpadIPC() {
     return packageJson.version;
   });
 
+  // Check if running in debug/development mode
+  ipcMain.handle('app:isDebug', async () => {
+    return !app.isPackaged;
+  });
+
+  // Open DevTools for a window
+  ipcMain.handle('app:openDevTools', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win) {
+      win.webContents.openDevTools();
+    }
+  });
+
   // Open R console window for installation
   ipcMain.handle('plugin:launchpad:openRConsole', wrapHandler(async (event, sessionId) => {
     const port = staticServerPlugin.getPort();

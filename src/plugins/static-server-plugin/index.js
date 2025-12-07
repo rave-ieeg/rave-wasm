@@ -179,6 +179,15 @@ class StaticServerPlugin {
           }
         }
         
+        // For Electron: serve index-electron.html instead of index.html at root
+        // This version hides the "download offline app" message
+        if (filePath === '/index.html') {
+          const electronIndexPath = path.join(this.basePath, 'site', 'index-electron.html');
+          if (fs.existsSync(electronIndexPath)) {
+            fullPath = electronIndexPath;
+          }
+        }
+        
         // Check if file exists first
         fs.stat(fullPath, (err, stats) => {
           if (err) {

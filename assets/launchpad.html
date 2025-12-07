@@ -93,20 +93,84 @@
 
     .button-group {
       display: flex;
-      flex-direction: column;
-      gap: 12px;
+      flex-direction: row;
+      gap: 16px;
       margin-bottom: 20px;
     }
 
     .launch-btn {
-      padding: 16px 24px;
+      padding: 20px 24px;
       border: none;
-      border-radius: 8px;
-      font-size: 16px;
+      border-radius: 12px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.3s;
       text-align: center;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .launch-btn .btn-icon {
+      width: 120px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .launch-btn .btn-icon svg {
+      height: 100%;
+      width: auto;
+    }
+
+    .btn-icon .icon-composite {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-icon .icon-rave-img {
+      height: 40px;
+      width: auto;
+    }
+
+    .btn-icon .icon-logo {
+      height: 36px;
+      width: auto;
+    }
+
+    .btn-icon .icon-plus {
+      font-size: 20px;
+      font-weight: 700;
+      color: inherit;
+    }
+
+    .btn-icon .icon-stack {
+      display: flex;
+      flex-direction: row;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .btn-icon .icon-logo-small {
+      height: 32px;
+      width: auto;
+    }
+
+    .launch-btn .btn-label {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .launch-btn .btn-subtitle {
+      font-size: 11px;
+      font-weight: 400;
+      opacity: 0.85;
     }
 
     .launch-btn:hover:not(:disabled) {
@@ -280,10 +344,29 @@
 
     <div class="button-group">
         <button class="launch-btn btn-secondary" id="btn-r-shiny" disabled>
-            Open RAVE server locally (requires R)
+            <span class="btn-icon">
+              <span class="icon-composite">
+                <img src="favicon.ico" class="icon-rave-img" alt="RAVE">
+                <span class="icon-plus">+</span>
+                <span class="icon-stack">
+                  <img src="r-logo.svg" class="icon-logo-small" alt="R">
+                  <img src="python-logo.svg" class="icon-logo" alt="Python">
+                </span>
+              </span>
+            </span>
+            <span class="btn-label">RAVE + R & Python</span>
+            <span class="btn-subtitle">Full features, requires R installation</span>
         </button>
         <button class="launch-btn btn-primary" id="btn-wasm">
-          Open Portable Widgets (no installation required)
+            <span class="btn-icon">
+              <span class="icon-composite">
+                <img src="favicon.ico" class="icon-rave-img" alt="RAVE">
+                <span class="icon-plus">+</span>
+                <img src="wasm-logo.svg" class="icon-logo" alt="WebAssembly">
+              </span>
+            </span>
+            <span class="btn-label">RAVE + WebAssembly</span>
+            <span class="btn-subtitle">Portable, no installation required</span>
         </button>
     </div>
 
@@ -346,7 +429,21 @@
 
   <script>
     // Get Electron APIs from preload
-    const { r, launchpad, cache, getAppVersion } = window.electron;
+    const { r, launchpad, cache, getAppVersion, isDebug, openDevTools } = window.electron;
+
+    // Enable DevTools in debug mode (Cmd+Option+I / Ctrl+Shift+I)
+    isDebug().then(debug => {
+      if (debug) {
+        document.addEventListener('keydown', (e) => {
+          // Cmd+Option+I on Mac, Ctrl+Shift+I on Windows/Linux
+          if ((e.metaKey && e.altKey && e.key === 'i') || 
+              (e.ctrlKey && e.shiftKey && e.key === 'I')) {
+            openDevTools();
+          }
+        });
+        console.log('Debug mode enabled. Press Cmd+Option+I (Mac) or Ctrl+Shift+I (Windows/Linux) to open DevTools.');
+      }
+    });
 
     // DOM elements
     const rIndicator = document.getElementById('r-indicator');
@@ -454,8 +551,14 @@
 
     // Launch WASM app
     btnWasm.addEventListener('click', async () => {
+      const label = btnWasm.querySelector('.btn-label');
+      const subtitle = btnWasm.querySelector('.btn-subtitle');
+      const originalLabel = label.textContent;
+      const originalSubtitle = subtitle.textContent;
+      
       btnWasm.disabled = true;
-      btnWasm.textContent = 'Launching...';
+      label.textContent = 'Launching...';
+      subtitle.textContent = 'Please wait';
       
       try {
         await launchpad.openApp('wasm');
@@ -469,14 +572,21 @@
         });
       } finally {
         btnWasm.disabled = false;
-        btnWasm.textContent = 'Open Portable Widgets (no installation required)';
+        label.textContent = originalLabel;
+        subtitle.textContent = originalSubtitle;
       }
     });
 
     // Launch R Shiny app (RAVE)
     btnRShiny.addEventListener('click', async () => {
+      const label = btnRShiny.querySelector('.btn-label');
+      const subtitle = btnRShiny.querySelector('.btn-subtitle');
+      const originalLabel = label.textContent;
+      const originalSubtitle = subtitle.textContent;
+      
       btnRShiny.disabled = true;
-      btnRShiny.textContent = 'Starting RAVE...';
+      label.textContent = 'Starting RAVE...';
+      subtitle.textContent = 'Please wait';
       
       try {
         const result = await launchpad.openApp('r-shiny');
@@ -493,7 +603,8 @@
         const statusResult = await r.getStatus();
         const status = statusResult.success ? statusResult.data : statusResult;
         btnRShiny.disabled = !status.detected || !status.packages || !status.packages.rave;
-        btnRShiny.textContent = 'Open RAVE server locally (requires R)';
+        label.textContent = originalLabel;
+        subtitle.textContent = originalSubtitle;
       }
     });
 

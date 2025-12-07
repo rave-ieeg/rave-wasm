@@ -292,41 +292,68 @@ message("  Created shinylive-sw-electron.js: caching disabled for Electron")
 
 # ---- Step 4: build root index.html -------------------------------------------
 source("www/r/shiny-helper.r")
-index_html <- bslib_page_template(
-  sidebar = NULL,
-  window_title = "RAVE (portable version)",
-  fluid = TRUE,
-  shiny::div(
-    style = "min-height: 15px"
-  ),
-  shiny::div(
-    class = "jumbotron",
-    shiny::div(
-      class = "container",
-      shiny::p(
-        # class = "lead",
-        "A collection of server-less RAVE widgets that runs entirely in your local browser. ",
-        "All the listed modules below are offline and your data will not be uploaded to the internet. ",
-        "The modules might take a while to load so please be patient (typically 10-30 seconds, depending on your hardware and internet connection). ",
-        "We recommend using the Chrome-based browsers for best experience. ",
-        shiny::a("Click here", href = "https://github.com/rave-ieeg/rave-wasm/releases", target = "_blank"),
-        "to download the offline app."
-      )
-    )
-  ),
-  shiny::hr(),
+
+# Web version intro text (shown on public website)
+web_intro <- shiny::div(
+  class = "jumbotron",
   shiny::div(
     class = "container",
-    shiny::fluidRow(
-      shiny::column(
-        width = 12L,
-        ul_html
-      )
+    shiny::p(
+      # class = "lead",
+      "A collection of server-less RAVE widgets that runs entirely in your local browser. ",
+      "All the listed modules below are offline and your data will not be uploaded to the internet. ",
+      "The modules might take a while to load so please be patient (typically 10-30 seconds, depending on your hardware and internet connection). ",
+      "We recommend using the Chrome-based browsers for best experience. ",
+      shiny::a("Click here", href = "https://github.com/rave-ieeg/rave-wasm/releases", target = "_blank"),
+      "to download the offline app."
     )
   )
 )
 
+# Electron version intro text (minimal, no download link)
+electron_intro <- shiny::div(
+  class = "jumbotron",
+  shiny::div(
+    class = "container",
+    shiny::p(
+      "A collection of server-less RAVE widgets. ",
+      "All the listed modules below are offline and your data will not be uploaded to the internet. ",
+      "The modules might take a while to load so please be patient (typically 10-30 seconds, depending on your hardware)."
+    )
+  )
+)
+
+# Helper function to generate index page
+generate_index_html <- function(intro_content, window_title = "RAVE (portable version)") {
+  bslib_page_template(
+    sidebar = NULL,
+    window_title = window_title,
+    fluid = TRUE,
+    shiny::div(
+      style = "min-height: 15px"
+    ),
+    intro_content,
+    shiny::hr(),
+    shiny::div(
+      class = "container",
+      shiny::fluidRow(
+        shiny::column(
+          width = 12L,
+          ul_html
+        )
+      )
+    )
+  )
+}
+
+# Generate web version (index.html)
+index_html <- generate_index_html(web_intro)
 htmltools::save_html(index_html, "site/index.html")
+
+# Generate Electron version (index-electron.html)
+index_electron_html <- generate_index_html(electron_intro, "RAVE Widgets")
+htmltools::save_html(index_electron_html, "site/index-electron.html")
+message("  Generated index.html and index-electron.html")
 
 
 # ---- Step 5: Generate manifests ----------------------------------------------

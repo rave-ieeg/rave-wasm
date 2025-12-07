@@ -15,7 +15,8 @@
     "build:win:ia32": "electron-builder --win --ia32",
     "build:linux": "electron-builder --linux --x64 --arm64",
     "build:linux:x64": "electron-builder --linux --x64",
-    "build:linux:arm64": "electron-builder --linux --arm64"
+    "build:linux:arm64": "electron-builder --linux --arm64",
+    "licenses": "node src/generate-licenses.js"
   },
   "keywords": [
     "electron",
@@ -26,7 +27,7 @@
     "name": "RAVE Team",
     "email": "help@rave.wiki"
   },
-  "license": "ISC",
+  "license": "GPL-3.0",
   "dependencies": {
     "mime-types": "^2.1.35"
   },
