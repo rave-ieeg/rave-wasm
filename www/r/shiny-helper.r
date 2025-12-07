@@ -301,12 +301,12 @@ server_common <- function(input, output, session) {
 }
 
 # WASM download helpers for shinylive environments
-wasm_download_button <- function(inputId, label, ..., style = NULL) {
+wasm_download_button <- function(inputId, label, ..., class = "btn-primary", style = NULL) {
   # Create action button styled like download button
   btn <- shiny::actionButton(
     inputId = inputId,
     label = label,
-    class = "btn-primary",
+    class = class,
     style = style,
     ...
   )

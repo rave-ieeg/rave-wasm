@@ -218,7 +218,7 @@ shinylive_js <- readLines('./site/shinylive/shinylive.js')
 
 # Injection 1: URL params injection (existing)
 anchor_text <- 'runApp(appRoot, appMode, { startFiles: appFiles }, appEngine);'
-inject_text <- 'const urlObj={}; urlParams.forEach((k, v) => {urlObj[k] = v;}); appFiles.push({"name" : ".urlParams", "content" : JSON.stringify(urlObj) });'
+inject_text <- 'const urlObj={}; urlParams.forEach((v, k) => {urlObj[k] = v;}); appFiles.push({"name" : ".urlParams", "content" : JSON.stringify(urlObj) });'
 
 inject_index <- which(trimws(shinylive_js) == anchor_text)
 if(length(inject_index) > 0 && trimws(shinylive_js[inject_index-1]) != inject_text) {
@@ -281,7 +281,7 @@ sw_js <- gsub(
 )
 
 # Create web version with caching enabled (for static web hosting)
-sw_js_web <- gsub('var useCaching = false;', 'var useCaching = true;', sw_js, fixed = TRUE)
+# sw_js_web <- gsub('var useCaching = false;', 'var useCaching = true;', sw_js, fixed = TRUE)
 writeLines(sw_js_web, sw_js_path, sep = "\n")
 message("  Modified shinylive-sw.js: enabled caching with version ", cache_version)
 

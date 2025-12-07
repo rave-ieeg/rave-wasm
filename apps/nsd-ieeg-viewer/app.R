@@ -11,6 +11,33 @@ if(dipsaus::rs_avail() && !is.na(dipsaus::rs_active_project())) {
 source("www/r/shiny-helper.r", local = TRUE, chdir = FALSE)
 source("www/r/coordinate-helper.r", local = TRUE, chdir = FALSE)
 
+
+# check if there is a .urlParams file
+this_env <- environment()
+initial_space <- "fsaverage (MNI305)"
+initial_space_forced <- FALSE
+initial_electrode_path <- NULL
+if(file.exists("./.urlParams")) {
+  try({
+    params <- dipsaus::read_json("./.urlParams")
+    if(length(params$space)) {
+      initial_space_forced <- TRUE
+    }
+    params$space <- match.arg(params$space, c("MNI305", "MNI152", "native"))
+    initial_space <- switch (
+      params$space,
+      "native" = "native subject",
+      "MNI152" = "MNI152",
+      "fsaverage (MNI305)"
+    )
+    if(length(params$electrode_path)) {
+      initial_electrode_path <- params$electrode_path[[1]]
+    }
+    # electrode_path=https%3A%2F%2Fraw.githubusercontent.com%2Frave-ieeg%2Frave-wasm%2Frefs%2Fheads%2Fmain%2Fassets%2Fapp-data%2Fbids-examples%2FNSD-electrodes%2Fsub-06_ses-ieeg01_space-MNI152NLin2009_electrodes.tsv
+  }, silent = TRUE)
+}
+
+
 ui <- function() {
   bslib_page_template(
     fluid = TRUE,
@@ -18,11 +45,19 @@ ui <- function() {
       shiny::column(
         width = 12L,
         shiny::h5("STEP 1:"),
+        shiny::fileInput(
+          inputId = ns("electrode_coord"),
+          label = "Electrode coordinate"
+        )
+      ),
+      shiny::column(
+        width = 12L,
+        shiny::h5("STEP 2:"),
         shiny::selectInput(
           inputId = ns("coordinate_space"),
           label = "Choose a brain model",
           choices = c("fsaverage (MNI305)", "MNI152", "native subject"),
-          selected = "fsaverage (MNI305)"
+          selected = initial_space
         ),
         shiny::conditionalPanel(
           ns = ns, condition = "input['coordinate_space'] === 'native subject'",
@@ -41,14 +76,10 @@ ui <- function() {
       ),
       shiny::column(
         width = 12L,
-        shiny::h5("STEP 2:"),
-        shiny::fileInput(
-          inputId = ns("electrode_coord"),
-          label = "Electrode coordinate"
-        ),
         dipsaus::actionButtonStyled(
           inputId = ns("render"),
-          label = "Start rendering brain"
+          label = "Rendering it!",
+          width = "100%"
         )
       ),
       shiny::column(
@@ -61,11 +92,12 @@ ui <- function() {
       ),
       shiny::column(
         width = 12L,
-        shiny::h3("STEP 4:"),
+        shiny::h5("STEP 4:"),
         wasm_download_button(
           inputId = ns("download"),
           label = "Export viewer",
-          style = "width:100%"
+          style = "width:100%",
+          class = "btn btn-default"
         )
       )
     ),
@@ -90,7 +122,6 @@ server <- function(input, output, session) {
   dipsaus::observeDirectoryProgress("directory", session = session)
   brain_proxy <- threeBrain::brain_proxy(outputId = "viewer", session = session)
   
-  
   # Load electrode table
   load_coord_table <- function(coordinate_file, filename = basename(coordinate_file)) {
     parsed <- parse_electrode_coordinate(coordinate_file, filename = filename)
@@ -103,7 +134,11 @@ server <- function(input, output, session) {
       brain_model <- "MNI152"
     }
     local_data$parsed_coordinates <- parsed
-    shiny::updateSelectInput(session = session, inputId = "coordinate_space", selected = brain_model)
+    if(initial_space_forced) {
+      this_env$initial_space_forced <- FALSE
+    } else {
+      shiny::updateSelectInput(session = session, inputId = "coordinate_space", selected = brain_model)
+    }
   }
   
   # Parse user input coordinate file
@@ -112,8 +147,10 @@ server <- function(input, output, session) {
       electrode_coord <- input$electrode_coord
       if(is.null(electrode_coord)) {
         # give users a default one
-        coordinate_file <- request_asset('bids-examples/NSD-electrodes/sub-06_ses-ieeg01_space-MNI305_electrodes.tsv')
-        load_coord_table(coordinate_file)
+        if(!length(initial_electrode_path)) {
+          initial_electrode_path <- request_asset('bids-examples/NSD-electrodes/sub-06_ses-ieeg01_space-MNI305_electrodes.tsv')
+        }
+        load_coord_table(initial_electrode_path)
         local_reactive$force_render <- Sys.time()
       } else {
         load_coord_table(electrode_coord$datapath, filename = electrode_coord$name)
