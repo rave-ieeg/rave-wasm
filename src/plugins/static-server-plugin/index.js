@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { lookup } = require('mime-types');
 const { wrapHandler } = require('../../utils/ipc-helpers');
+const CacheManager = require('../../utils/cache-manager');
 
 /**
  * Static Server Plugin for serving WASM app files
@@ -13,16 +14,98 @@ class StaticServerPlugin {
     this.server = null;
     this.port = null;
     this.basePath = null;
+    this.cacheManager = new CacheManager();
   }
 
   /**
    * Initialize the plugin
    * @param {string} basePath - Base path for the application
+   * @param {string} remoteBaseUrl - Base URL for downloading assets
    */
-  async init(basePath) {
+  async init(basePath, remoteBaseUrl = 'https://rave.wiki/rave-wasm') {
     this.basePath = basePath;
+    
+    // Initialize cache manager for lazy-loading app-data
+    this.cacheManager.init(remoteBaseUrl);
+    
     this.port = await this._createServer();
     console.log(`StaticServerPlugin initialized on port ${this.port}`);
+  }
+
+  /**
+   * Handle requests for app-data files (lazy-loaded from cache or remote)
+   * @param {string} filePath - The request path (e.g., /app-data/freesurfer-models/fsaverage/surf/lh.pial)
+   * @param {http.IncomingMessage} req - The request object
+   * @param {http.ServerResponse} res - The response object
+   */
+  async _handleAppDataRequest(filePath, req, res) {
+    // Remove leading /app-data/ to get relative path
+    const relativePath = filePath.replace(/^\/app-data\//, '');
+    
+    // Always use cache for app-data (never use bundled site/app-data)
+    // This ensures consistent behavior between dev and production
+    
+    // Check if file exists in cache
+    const cachedPath = this.cacheManager.getCachedFilePath(relativePath);
+    if (fs.existsSync(cachedPath)) {
+      this._serveFile(cachedPath, res);
+      return;
+    }
+    
+    // File not cached - try to download it
+    try {
+      console.log(`Cache miss for ${relativePath}, downloading...`);
+      await this.cacheManager.downloadFile(relativePath);
+      
+      if (fs.existsSync(cachedPath)) {
+        this._serveFile(cachedPath, res);
+      } else {
+        res.writeHead(404);
+        res.end('File not found after download attempt');
+      }
+    } catch (err) {
+      console.error(`Failed to download ${relativePath}:`, err);
+      res.writeHead(404);
+      res.end(`File not found: ${relativePath}`);
+    }
+  }
+
+  /**
+   * Serve a file with appropriate headers
+   * @param {string} fullPath - Full path to the file
+   * @param {http.ServerResponse} res - The response object
+   */
+  _serveFile(fullPath, res) {
+    fs.stat(fullPath, (err, stats) => {
+      if (err) {
+        res.writeHead(404);
+        res.end('File not found');
+        return;
+      }
+      
+      const mimeType = lookup(fullPath) || 'application/octet-stream';
+      const headers = {
+        'Content-Type': mimeType,
+        'Content-Length': stats.size,
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=31536000, immutable' // Cache app-data for 1 year
+      };
+      
+      res.writeHead(200, headers);
+      
+      const readStream = fs.createReadStream(fullPath, { highWaterMark: 1024 * 1024 });
+      readStream.pipe(res);
+      
+      readStream.on('error', (streamErr) => {
+        console.error('Stream error:', streamErr);
+        if (!res.headersSent) {
+          res.writeHead(500);
+        }
+        res.end();
+      });
+    });
   }
 
   /**
@@ -62,7 +145,7 @@ class StaticServerPlugin {
    */
   _createServer() {
     return new Promise((resolve) => {
-      this.server = http.createServer((req, res) => {
+      this.server = http.createServer(async (req, res) => {
         // Enable keep-alive for connection reuse
         res.setHeader('Connection', 'keep-alive');
         res.setHeader('Keep-Alive', 'timeout=600');
@@ -73,6 +156,12 @@ class StaticServerPlugin {
         // Default to index.html
         if (filePath === '/') {
           filePath = '/index.html';
+        }
+        
+        // Check if this is an app-data request (lazy-loaded content)
+        if (filePath.startsWith('/app-data/')) {
+          await this._handleAppDataRequest(filePath, req, res);
+          return;
         }
         
         // Try assets folder first (for launchpad.html, etc.), then site folder
@@ -196,12 +285,47 @@ class StaticServerPlugin {
   }
 
   /**
+   * Get cache manager instance
+   * @returns {CacheManager}
+   */
+  getCacheManager() {
+    return this.cacheManager;
+  }
+
+  /**
    * Register IPC handlers
    * @param {ipcMain} ipcMain - Electron ipcMain
    */
   registerIPC(ipcMain) {
     ipcMain.handle('plugin:server:getPort', wrapHandler(async () => {
       return this.port;
+    }));
+    
+    // Cache management IPC handlers
+    ipcMain.handle('plugin:cache:getStats', wrapHandler(async () => {
+      return this.cacheManager.getCacheStats();
+    }));
+    
+    ipcMain.handle('plugin:cache:getCacheDir', wrapHandler(async () => {
+      return this.cacheManager.getCacheDir();
+    }));
+    
+    ipcMain.handle('plugin:cache:clearCache', wrapHandler(async () => {
+      this.cacheManager.clearCache();
+      return { success: true };
+    }));
+    
+    ipcMain.handle('plugin:cache:ensureManifest', wrapHandler(async (event, manifestName) => {
+      const manifest = await this.cacheManager.loadManifest(manifestName, this.basePath);
+      if (manifest) {
+        await this.cacheManager.ensureManifestCached(manifest);
+        return { success: true, filesCount: manifest.files?.length || 0 };
+      }
+      return { success: false, error: 'Manifest not found' };
+    }));
+    
+    ipcMain.handle('plugin:cache:isFileCached', wrapHandler(async (event, relativePath) => {
+      return this.cacheManager.isFileCached(relativePath);
     }));
   }
 

@@ -66,6 +66,24 @@ contextBridge.exposeInMainWorld(
       getPort: () => ipcRenderer.invoke('plugin:server:getPort')
     },
 
+    // Cache Management APIs
+    cache: {
+      // Get cache statistics (size, file count)
+      getStats: () => ipcRenderer.invoke('plugin:cache:getStats'),
+      
+      // Get cache directory path
+      getCacheDir: () => ipcRenderer.invoke('plugin:cache:getCacheDir'),
+      
+      // Clear all cached data
+      clearCache: () => ipcRenderer.invoke('plugin:cache:clearCache'),
+      
+      // Ensure a manifest's files are cached
+      ensureManifest: (manifestName) => ipcRenderer.invoke('plugin:cache:ensureManifest', manifestName),
+      
+      // Check if a specific file is cached
+      isFileCached: (relativePath) => ipcRenderer.invoke('plugin:cache:isFileCached', relativePath)
+    },
+
     // App APIs
     app: {
       // Get application paths

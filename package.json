@@ -48,7 +48,8 @@
       "src/**/*",
       "site/**/*",
       "assets/**/*",
-      "!assets/app-data/**/*"
+      "!assets/app-data/**/*",
+      "!site/app-data/**/*"
     ],
     "mac": {
       "icon": "site/favicon.icns",
