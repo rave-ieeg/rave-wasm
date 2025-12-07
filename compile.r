@@ -281,6 +281,7 @@ sw_js <- gsub(
 )
 
 # Create web version with caching enabled (for static web hosting)
+sw_js_web <- sw_js
 # sw_js_web <- gsub('var useCaching = false;', 'var useCaching = true;', sw_js, fixed = TRUE)
 writeLines(sw_js_web, sw_js_path, sep = "\n")
 message("  Modified shinylive-sw.js: enabled caching with version ", cache_version)
