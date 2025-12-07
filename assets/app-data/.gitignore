@@ -1,7 +1,5 @@
 # Ignore brain model manifest files (auto regenerated)
 freesurfer-models/*_manifest.json
-# Keep the directory structure
-!freesurfer-models/.gitkeep
 # Keep documentation and examples
 !*.md
 !.gitkeep

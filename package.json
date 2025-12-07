@@ -47,7 +47,8 @@
       "preload.js",
       "src/**/*",
       "site/**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "!assets/app-data/**/*"
     ],
     "mac": {
       "icon": "site/favicon.icns",
