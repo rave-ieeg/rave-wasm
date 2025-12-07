@@ -81,6 +81,15 @@ class StaticServerPlugin {
           fullPath = path.join(this.basePath, 'site', filePath);
         }
         
+        // For Electron: serve shinylive-sw-electron.js instead of shinylive-sw.js
+        // This version has caching disabled since Electron uses variable ports
+        if (filePath === '/shinylive-sw.js') {
+          const electronSwPath = path.join(this.basePath, 'site', 'shinylive-sw-electron.js');
+          if (fs.existsSync(electronSwPath)) {
+            fullPath = electronSwPath;
+          }
+        }
+        
         // Check if file exists first
         fs.stat(fullPath, (err, stats) => {
           if (err) {
