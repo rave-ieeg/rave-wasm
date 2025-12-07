@@ -307,7 +307,8 @@ index_html <- bslib_page_template(
         # class = "lead",
         "A collection of server-less RAVE widgets that runs entirely in your local browser. ",
         "All the listed modules below are offline and your data will not be uploaded to the internet. ",
-        "The modules might take a while to load so please be patient. ",
+        "The modules might take a while to load so please be patient (typically 10-30 seconds, depending on your hardware and internet connection). ",
+        "We recommend using the Chrome-based browsers for best experience. ",
         shiny::a("Click here", href = "https://github.com/rave-ieeg/rave-wasm/releases", target = "_blank"),
         "to download the offline app."
       )
