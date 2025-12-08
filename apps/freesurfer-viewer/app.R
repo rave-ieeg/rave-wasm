@@ -195,7 +195,7 @@ server <- function(input, output, session) {
   
   shiny::bindEvent(
     safe_observe({
-      csv_path <- input$electrode_coord$datapath[[1]]
+      csv_path <- input$electrode_value$datapath[[1]]
       if(file_ext(csv_path) == ".tsv") {
         # BIDS
         value_table <- read.table(csv_path, header = TRUE, sep = "\t", na.strings = "n/a")

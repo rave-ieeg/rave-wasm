@@ -14,12 +14,20 @@ source("www/r/coordinate-helper.r", local = TRUE, chdir = FALSE)
 
 # check if there is a .urlParams file
 this_env <- environment()
+initial_controllers <- list()
 initial_space <- "fsaverage (MNI305)"
 initial_space_forced <- FALSE
 initial_electrode_path <- NULL
 if(file.exists("./.urlParams")) {
   try({
     params <- dipsaus::read_json("./.urlParams")
+    controllers_str <- params$controllers
+    if(length(controllers_str) == 1 && is.character(controllers_str)) {
+      tryCatch({
+        initial_controllers <- as.list(dipsaus::fromJSON(controllers_str, simplifyVector = TRUE))
+      }, error = function(e) {})
+    }
+    
     if(length(params$space)) {
       initial_space_forced <- TRUE
     }
@@ -30,12 +38,14 @@ if(file.exists("./.urlParams")) {
       "MNI152" = "MNI152",
       "fsaverage (MNI305)"
     )
+    
     if(length(params$electrode_path)) {
       initial_electrode_path <- params$electrode_path[[1]]
     }
-    # electrode_path=https%3A%2F%2Fraw.githubusercontent.com%2Frave-ieeg%2Frave-wasm%2Frefs%2Fheads%2Fmain%2Fassets%2Fapp-data%2Fbids-examples%2FNSD-electrodes%2Fsub-06_ses-ieeg01_space-MNI152NLin2009_electrodes.tsv
   }, silent = TRUE)
 }
+# Check out this:
+# http://127.0.0.1:8000/nsd-ieeg-viewer/index.html?controllers={"Surface%20Type":"inflated"}&electrode_path=https%3A%2F%2Fraw.githubusercontent.com%2Frave-ieeg%2Frave-wasm%2Frefs%2Fheads%2Fmain%2Fassets%2Fapp-data%2Fbids-examples%2FNSD-electrodes%2Fsub-06_ses-ieeg01_space-MNI152NLin2009_electrodes.tsv
 
 
 ui <- function() {
@@ -396,14 +406,14 @@ server <- function(input, output, session) {
       position_names = position_names,
       priority = "sphere"
     )
-    
+    brain$set_electrode_values()
     local_data$brain <- brain
     local_reactive$needs_update <- Sys.time()
   }
   
   shiny::bindEvent(
     safe_observe({
-      csv_path <- input$electrode_coord$datapath[[1]]
+      csv_path <- input$electrode_value$datapath[[1]]
       if(file_ext(csv_path) == ".tsv") {
         # BIDS
         value_table <- read.table(csv_path, header = TRUE, sep = "\t", na.strings = "n/a")
@@ -413,7 +423,7 @@ server <- function(input, output, session) {
       }
       nr <- nrow(value_table)
       if(!nr) { return() }
-      coord_table <- local_data$coord_table
+      coord_table <- local_data$brain$electrodes$raw_table
       if(!length(value_table$Electrode)) {
         # Try to match labels
         value_table$Label <- value_table$name %||% value_table$Label %||% value_table$label
@@ -426,8 +436,7 @@ server <- function(input, output, session) {
       }
       value_table$Subject <- NULL
       value_table$SubjectCode <- NULL
-      local_data$value_table <- value_table
-      set_brain()
+      local_data$brain$set_electrode_values(value_table)
       brain_proxy$set_electrode_data(value_table, clear_first = TRUE)
       # local_reactive$needs_update <- Sys.time()
     }),
@@ -441,47 +450,64 @@ server <- function(input, output, session) {
     )
     
     brain <- local_data$brain
+    coordinate_space <- shiny::isolate(input$coordinate_space)
+    is_native <- identical(coordinate_space, "native subject")
+    
     if(is.null(brain)) {
-      if(coord_space == "native subject") {
+      if(is_native) {
         stop("Please load a NIfTI file or a FreeSurfer folder first!")
       } else {
-        stop("Loading brain model, please wait...")
+        stop("Loading template brain model")
       }
     }
+    
+    # c("fsaverage (MNI305)", "MNI152", "native subject"),
+    # is_native <- coord_space == "native subject"
+    
+    controllers = list(
+      "Volume Mapping" = "sphere.reg",
+      "Outlines" = "on",
+      "Map Electrodes" = !is_native
+    )
+    for(nm in names(initial_controllers)) {
+      controllers[[nm]] <- initial_controllers[[nm]]
+    }
+    
     brain$render(
       outputId = "viewer",
       session = session,
       show_modal = FALSE,
-      side_canvas = TRUE
+      side_canvas = TRUE,
+      controllers = controllers
     )
   })
   
-  # shiny::bindEvent(
-  #   safe_observe({
-  #     message("Preparing viewer for download")
-  #     brain <- set_brain()
-  #     if(is.null(brain)) {
-  #       shiny::showNotification("Invalid viewer files. Please load the NIfTI/FreeSurfer files.", type = "error")
-  #       return()
-  #     }
-  #     
-  #     # Generate viewer HTML
-  #     viewer <- brain$render(outputId = "viewer", session = session, show_modal = FALSE)
-  #     tfpath <- tempfile(fileext = ".html")
-  #     threeBrain::save_brain(viewer, title = "RAVE Viewer", path = tfpath)
-  #     
-  #     # Stream file to client and cleanup
-  #     wasm_send_file_download(
-  #       session = session,
-  #       filepath = tfpath,
-  #       filename = "RAVEViewer.html",
-  #       cleanup = TRUE
-  #     )
-  #   }),
-  #   input$download,
-  #   ignoreNULL = TRUE,
-  #   ignoreInit = TRUE
-  # )
+  shiny::bindEvent(
+    safe_observe({
+      message("Preparing viewer for download")
+      brain <- local_data$brain
+      if(is.null(brain)) {
+        shiny::showNotification("Invalid viewer files. Please load the NIfTI/FreeSurfer files.", type = "error")
+        return()
+      }
+
+      # Generate viewer HTML
+      viewer <- brain$render(outputId = "viewer", session = session, show_modal = FALSE)
+      tfpath <- tempfile(fileext = ".html")
+      threeBrain::save_brain(viewer, title = "RAVE Viewer", path = tfpath)
+
+      # Stream file to client and cleanup
+      wasm_send_file_download(
+        session = session,
+        filepath = tfpath,
+        filename = "RAVEViewer.html",
+        cleanup = TRUE
+      )
+    }),
+    input$download,
+    ignoreNULL = TRUE,
+    ignoreInit = TRUE
+  )
 }
 
 start_app(ui(), server)
