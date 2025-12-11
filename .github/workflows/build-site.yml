@@ -74,7 +74,8 @@ jobs:
             repos <- repos[unique(c("rave-ieeg", names(repos)))]
             options(repos = unlist(repos, use.names = TRUE))
             pak::pak(c(
-              "posit-dev/r-shinylive", "yaml", "fs", "shiny", "bslib", "htmltools",
+              "posit-dev/r-shinylive", "yaml", "fs", "shiny", "bslib", "htmltools", 
+              "dipsaus", "threeBrain", "ravetools", "ravecore", "ravepipeline", "ravedash", "rave",
               "ravecore", "ravebuiltins"
             ))
           '
