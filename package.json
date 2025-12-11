@@ -6,6 +6,8 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder",
+    "build-site:local": "RAVE_WASM_CACHE=TRUE && RAVE_WASM_BASE_URL='http://127.0.0.1:8000' && Rscript compile.r",
+    "build-site": "RAVE_WASM_CACHE=FALSE && RAVE_WASM_BASE_URL='https://rave.wiki/rave-wasm' && Rscript compile.r",
     "build:all": "electron-builder --mac --win --linux",
     "build:mac": "electron-builder --mac --x64 --arm64",
     "build:mac:arm64": "electron-builder --mac --arm64",

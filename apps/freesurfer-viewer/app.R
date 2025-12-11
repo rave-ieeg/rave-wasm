@@ -37,10 +37,11 @@ ui <- bslib_page_template(
     shiny::column(
       width = 12L,
       shiny::h3("STEP 4:"),
-      wasm_download_button(
+      shiny::actionButton(
         inputId = ns("download"),
         label = "Export viewer",
-        style = "width:100%"
+        style = "width:100%",
+        class = "btn-primary"
       )
     )
   ),
@@ -252,11 +253,12 @@ server <- function(input, output, session) {
       threeBrain::save_brain(viewer, title = "RAVE Viewer", path = tfpath)
       
       # Stream file to client and cleanup
-      wasm_send_file_download(
-        session = session,
+      dipsaus::stream_download(
         filepath = tfpath,
         filename = "RAVEViewer.html",
-        cleanup = TRUE
+        session = session,
+        cleanup = TRUE,
+        method = "blob"
       )
     }),
     input$download,

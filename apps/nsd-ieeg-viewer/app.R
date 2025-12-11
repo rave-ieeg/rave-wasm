@@ -45,8 +45,7 @@ if(file.exists("./.urlParams")) {
   }, silent = TRUE)
 }
 # Check out this:
-# http://127.0.0.1:8000/nsd-ieeg-viewer/index.html?controllers={"Surface%20Type":"inflated"}&electrode_path=https%3A%2F%2Fraw.githubusercontent.com%2Frave-ieeg%2Frave-wasm%2Frefs%2Fheads%2Fmain%2Fassets%2Fapp-data%2Fbids-examples%2FNSD-electrodes%2Fsub-06_ses-ieeg01_space-MNI152NLin2009_electrodes.tsv
-
+# http://127.0.0.1:8000/nsd-ieeg-viewer/index.html?controllers={"Display%20Data":"Destrieux_label_text"}&electrode_path=https%3A%2F%2Fraw.githubusercontent.com%2Frave-ieeg%2Frave-wasm%2Frefs%2Fheads%2Fmain%2Fassets%2Fapp-data%2Fbids-examples%2FNSD-electrodes%2Fsub-06_ses-ieeg01_space-MNI152NLin2009_electrodes.tsv
 
 ui <- function() {
   bslib_page_template(
@@ -103,7 +102,7 @@ ui <- function() {
       shiny::column(
         width = 12L,
         shiny::h5("STEP 4:"),
-        wasm_download_button(
+        shiny::actionButton(
           inputId = ns("download"),
           label = "Export viewer",
           style = "width:100%",
@@ -497,11 +496,12 @@ server <- function(input, output, session) {
       threeBrain::save_brain(viewer, title = "RAVE Viewer", path = tfpath)
 
       # Stream file to client and cleanup
-      wasm_send_file_download(
-        session = session,
+      dipsaus::stream_download(
         filepath = tfpath,
         filename = "RAVEViewer.html",
-        cleanup = TRUE
+        session = session,
+        cleanup = TRUE,
+        method = "blob"
       )
     }),
     input$download,
