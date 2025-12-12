@@ -1,608 +1,550 @@
 const { spawn } = require('child_process');
-const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const yaml = require('js-yaml');
 
 /**
- * RAVE Installer for managing prerequisites and installation
- * Handles prerequisite checks for macOS, Windows, and Linux
- * 
- * Uses cacheManager for storing prerequisite check results (cached data).
- * Prerequisite caches are stored under the app-data/json-cache directory
- * and will be cleared when user clicks "Clear Cache".
- * 
- * Uses sessionManager for R execution in headless mode (no UI dialogs).
+ * RAVE Installer with YAML-based checklist system
+ * Loads platform-specific installation workflows from YAML files
+ * Implements dependency resolution and sequential task execution
+ * No caching - always checks fresh system state
  */
 class RAVEInstaller {
-  constructor(cacheManager, sessionManager) {
-    this.cacheManager = cacheManager;
-    this.sessionManager = sessionManager;
+  constructor(sessionManager, shellSessionManager) {
+    this.sessionManager = sessionManager; // R session manager
+    this.shellSessionManager = shellSessionManager; // Shell session manager
     this.platform = process.platform;
-    this.osVersion = os.release();
-  }
-
-  /**
-   * Get cache key for prerequisite results
-   * Includes platform and OS version to invalidate when OS is upgraded
-   * @returns {string}
-   */
-  _getCacheKey() {
-    return `prerequisites-${this.platform}-${this.osVersion}`;
-  }
-
-  /**
-   * Get cached prerequisite results if valid
-   * Only passed results are cached (for 1 day)
-   * Failed results are never cached so users can fix and retry
-   * @returns {Object|null}
-   */
-  _getCachedPrerequisites() {
-    const cacheKey = this._getCacheKey();
-    const cached = this.cacheManager.getJsonCache(cacheKey);
-    if (cached && cached.timestamp && cached.passed) {
-      // Cache is valid for 1 day (only for passed results)
-      const age = Date.now() - cached.timestamp;
-      const ONE_DAY = 24 * 60 * 60 * 1000;
-      if (age < ONE_DAY) {
-        return cached;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Save prerequisite results to cache
-   * Only caches passed results - failed results should not be cached
-   * so users can fix issues and retry without waiting for cache expiration
-   * @param {Object} result
-   */
-  _cachePrerequisites(result) {
-    // Only cache if prerequisites passed
-    if (!result.passed) {
-      console.log('Prerequisites check failed - not caching result');
-      return;
-    }
     
-    const cacheKey = this._getCacheKey();
-    const cacheData = {
-      ...result,
-      timestamp: Date.now(),
-      osVersion: this.osVersion
+    // Installation state
+    this.checklist = null;
+    this.steps = [];
+    this.currentStep = null;
+    this._aborted = false;
+    this._proceedSignal = null;
+  }
+
+  /**
+   * Load YAML checklist for current platform
+   * @returns {Promise<{success: boolean, checklist: Object|null, error: string|null}>}
+   */
+  async loadChecklist() {
+    const platformMap = {
+      'darwin': 'macos',
+      'win32': 'windows',
+      'linux': 'linux'
     };
-    this.cacheManager.setJsonCache(cacheKey, cacheData);
-    console.log('Prerequisites check passed - cached for 1 day');
-  }
 
-  /**
-   * Clear prerequisite cache (force re-check)
-   */
-  clearCache() {
-    const cacheKey = this._getCacheKey();
-    this.cacheManager.removeJsonCache(cacheKey);
-  }
+    const platformName = platformMap[this.platform] || 'linux';
+    const checklistPath = path.join(__dirname, '..', '..', '..', 'assets', 'installer-checklists', `installer-${platformName}.yml`);
 
-  /**
-   * Install or update ravemanager package using sessionManager
-   * Uses sessionManager.getRPath() for R executable path
-   * @returns {Promise<{success: boolean, version: string|null, error: string|null}>}
-   */
-  async installRavemanager() {
-    const sessionId = `ravemanager-install-${Date.now()}`;
-    
+    console.log(`[RAVEInstaller] Loading checklist from: ${checklistPath}`);
+
     try {
-      // Create headless session (sessionManager gets rPath from detector)
-      const sessionResult = await this.sessionManager.createSession(sessionId, null, { headless: true });
-      if (!sessionResult.success) {
-        return { success: false, version: null, error: sessionResult.error };
+      if (!fs.existsSync(checklistPath)) {
+        return {
+          success: false,
+          checklist: null,
+          error: `Checklist file not found: ${checklistPath}`
+        };
       }
 
-      console.log('Installing/updating ravemanager package...');
-      
-      const installCode = `
-tryCatch({
-  install.packages('ravemanager', repos = 'https://rave-ieeg.r-universe.dev', quiet = TRUE)
-  if(require('ravemanager', quietly = TRUE)) {
-    cat('RAVEMANAGER_INSTALLED:', as.character(packageVersion('ravemanager')), '\\n')
-  } else {
-    cat('RAVEMANAGER_FAILED\\n')
-  }
-}, error = function(e) {
-  cat('RAVEMANAGER_ERROR:', e$message, '\\n')
-})
-`;
+      const fileContents = fs.readFileSync(checklistPath, 'utf8');
+      const checklist = yaml.load(fileContents);
 
-      // Execute with 3 minute timeout
-      const result = await this.sessionManager.execute(sessionId, installCode, 180000);
-      
-      // Clean up session
-      this.sessionManager.terminateSession(sessionId);
+      // Validate checklist structure
+      if (!checklist || !checklist.steps || !Array.isArray(checklist.steps)) {
+        return {
+          success: false,
+          checklist: null,
+          error: 'Invalid checklist format: missing steps array'
+        };
+      }
 
-      if (result.success && result.output) {
-        if (result.output.includes('RAVEMANAGER_INSTALLED:')) {
-          const match = result.output.match(/RAVEMANAGER_INSTALLED:\s*(\S+)/);
-          const version = match ? match[1] : 'unknown';
-          console.log('ravemanager installed successfully, version:', version);
-          return { success: true, version, error: null };
-        } else if (result.output.includes('RAVEMANAGER_ERROR:')) {
-          const match = result.output.match(/RAVEMANAGER_ERROR:\s*(.+)/);
-          const error = match ? match[1] : 'Unknown error';
-          console.error('ravemanager installation error:', error);
-          return { success: false, version: null, error };
-        } else if (result.output.includes('RAVEMANAGER_FAILED')) {
-          return { success: false, version: null, error: 'Failed to load ravemanager after installation' };
+      // Validate each step has required fields
+      for (const step of checklist.steps) {
+        if (!step.id || !step.name || !step.type) {
+          return {
+            success: false,
+            checklist: null,
+            error: `Invalid step: missing id, name, or type - ${JSON.stringify(step)}`
+          };
         }
       }
-      
-      return { success: false, version: null, error: result.error || 'Installation failed' };
+
+      this.checklist = checklist;
+      console.log(`[RAVEInstaller] Loaded checklist: ${checklist.name} with ${checklist.steps.length} steps`);
+
+      return { success: true, checklist, error: null };
     } catch (err) {
-      // Clean up session on error
-      this.sessionManager.terminateSession(sessionId);
-      console.error('Failed to install ravemanager:', err);
-      return { success: false, version: null, error: err.message };
+      console.error('[RAVEInstaller] Failed to load checklist:', err);
+      return {
+        success: false,
+        checklist: null,
+        error: `Failed to parse YAML: ${err.message}`
+      };
     }
   }
 
   /**
-   * Get the RAVE installation script
-   * Following instructions from https://rave.wiki/posts/installation/installation.html
-   * @returns {string}
+   * Evaluate a step's "if" condition to determine if it can be skipped
+   * @param {Object} step - Step object from checklist
+   * @returns {Promise<{canSkip: boolean, output: string}>}
    */
-  getInstallScript() {
-    return `
-# RAVE Installation Script
-# Following https://rave.wiki/posts/installation/installation.html
+  async evaluateCondition(step) {
+    if (!step.if) {
+      // No condition means step is needed
+      return { canSkip: false, output: '' };
+    }
 
-cat("\\n===== Step 1: Installing ravemanager =====\\n")
-install.packages('ravemanager', repos = 'https://rave-ieeg.r-universe.dev')
+    console.log(`[RAVEInstaller] Evaluating condition for ${step.id}: ${step.if}`);
 
-cat("\\n===== Step 2: Running ravemanager::install() =====\\n")
-ravemanager::install()
-
-cat("\\nDone finalizing installations!\\n")
-cat("\\nINSTALLATION_COMPLETE\\n")
-`;
-  }
-
-  /**
-   * Get the installation timeout in milliseconds
-   * @returns {number}
-   */
-  getInstallTimeout() {
-    return 600000; // 10 minutes
-  }
-
-  /**
-   * Check if Homebrew is installed (macOS)
-   * @returns {Promise<{installed: boolean, version: string|null}>}
-   */
-  async _checkHomebrew() {
     return new Promise((resolve) => {
-      const brew = spawn('brew', ['--version'], { windowsHide: true });
+      const proc = spawn('sh', ['-c', step.if], { windowsHide: true });
       
       let output = '';
-      brew.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      brew.on('close', (code) => {
-        if (code === 0 && output.includes('Homebrew')) {
-          const match = output.match(/Homebrew\s+(\d+\.\d+\.\d+)/);
-          resolve({ installed: true, version: match ? match[1] : 'unknown' });
-        } else {
-          resolve({ installed: false, version: null });
-        }
-      });
-
-      brew.on('error', () => {
-        resolve({ installed: false, version: null });
-      });
-
-      setTimeout(() => {
-        brew.kill();
-        resolve({ installed: false, version: null });
-      }, 5000);
-    });
-  }
-
-  /**
-   * Check which brew packages are installed (macOS)
-   * @param {string[]} packages - Package names to check
-   * @returns {Promise<{installed: string[], missing: string[]}>}
-   */
-  async _checkBrewPackages(packages) {
-    return new Promise((resolve) => {
-      const brew = spawn('brew', ['list', '--formula'], { windowsHide: true });
       
-      let output = '';
-      brew.stdout.on('data', (data) => {
+      proc.stdout.on('data', (data) => {
         output += data.toString();
       });
-
-      brew.on('close', (code) => {
-        if (code === 0) {
-          const installedPackages = output.split(/\s+/).map(p => p.trim().toLowerCase());
-          const installed = [];
-          const missing = [];
-          
-          // Aliases for package names (some packages have multiple names)
-          const aliases = {
-            'pkgconf': ['pkgconf', 'pkg-config'],
-            // 'pkg-config': ['pkgconf', 'pkg-config']
-          };
-          
-          for (const pkg of packages) {
-            const pkgLower = pkg.toLowerCase();
-            const namesToCheck = aliases[pkgLower] || [pkgLower];
-            
-            const isInstalled = namesToCheck.some(name => 
-              installedPackages.some(p => p.startsWith(name))
-            );
-            
-            if (isInstalled) {
-              installed.push(pkg);
-            } else {
-              missing.push(pkg);
-            }
-          }
-          
-          resolve({ installed, missing });
-        } else {
-          // If brew list fails, assume all are missing
-          resolve({ installed: [], missing: packages });
-        }
+      
+      proc.stderr.on('data', (data) => {
+        output += data.toString();
       });
-
-      brew.on('error', () => {
-        resolve({ installed: [], missing: packages });
+      
+      proc.on('close', (code) => {
+        const canSkip = code === 0;
+        console.log(`[RAVEInstaller] Condition for ${step.id}: ${canSkip ? 'SKIP' : 'EXECUTE'} (exit code: ${code})`);
+        resolve({ canSkip, output: output.trim() });
       });
-
+      
+      proc.on('error', (err) => {
+        console.error(`[RAVEInstaller] Condition error for ${step.id}:`, err);
+        resolve({ canSkip: false, output: err.message });
+      });
+      
+      // 10 second timeout for condition checks
       setTimeout(() => {
-        brew.kill();
-        resolve({ installed: [], missing: packages });
+        proc.kill();
+        resolve({ canSkip: false, output: 'Condition check timeout' });
       }, 10000);
     });
   }
 
   /**
-   * Check macOS prerequisites
-   * @returns {Promise<Object>}
+   * Topological sort of steps based on dependencies (needs field)
+   * @param {Array} steps - Array of step objects
+   * @returns {{success: boolean, sorted: Array, error: string|null}}
    */
-  async _checkMacOSPrerequisites() {
-    const issues = [];
-    const commands = [];
+  topologicalSort(steps) {
+    const sorted = [];
+    const visited = new Set();
+    const visiting = new Set();
+    const stepsMap = new Map();
+
+    // Build map for quick lookup
+    steps.forEach(step => stepsMap.set(step.id, step));
+
+    const visit = (stepId) => {
+      if (visited.has(stepId)) return true;
+      if (visiting.has(stepId)) {
+        return false; // Circular dependency detected
+      }
+
+      visiting.add(stepId);
+
+      const step = stepsMap.get(stepId);
+      if (!step) {
+        console.warn(`[RAVEInstaller] Step not found: ${stepId}`);
+        return true;
+      }
+
+      // Visit dependencies first
+      if (step.needs && Array.isArray(step.needs)) {
+        for (const depId of step.needs) {
+          if (!visit(depId)) {
+            return false; // Circular dependency in chain
+          }
+        }
+      }
+
+      visiting.delete(stepId);
+      visited.add(stepId);
+      sorted.push(step);
+      return true;
+    };
+
+    // Visit all steps
+    for (const step of steps) {
+      if (!visited.has(step.id)) {
+        if (!visit(step.id)) {
+          return {
+            success: false,
+            sorted: [],
+            error: `Circular dependency detected involving step: ${step.id}`
+          };
+        }
+      }
+    }
+
+    return { success: true, sorted, error: null };
+  }
+
+  /**
+   * Check if step's dependencies are satisfied
+   * @param {Object} step - Step to check
+   * @param {Array} executedSteps - Array of executed step objects with status
+   * @returns {{satisfied: boolean, blockedBy: Array<string>}}
+   */
+  checkDependencies(step, executedSteps) {
+    if (!step.needs || step.needs.length === 0) {
+      return { satisfied: true, blockedBy: [] };
+    }
+
+    const executedMap = new Map();
+    executedSteps.forEach(s => {
+      if (s.status) {
+        executedMap.set(s.id, s.status);
+      }
+    });
+
+    const blockedBy = [];
     
-    // Check Homebrew
-    const brewStatus = await this._checkHomebrew();
-    if (!brewStatus.installed) {
-      issues.push('Homebrew package manager is not installed');
-      commands.push('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"');
-    } else {
-      // Check required brew packages
-      const requiredPackages = ['hdf5', 'fftw', 'pkg-config', 'cmake', 'libpng'];
-      const pkgStatus = await this._checkBrewPackages(requiredPackages);
+    for (const depId of step.needs) {
+      const depStatus = executedMap.get(depId);
       
-      if (pkgStatus.missing.length > 0) {
-        issues.push(`Missing Homebrew packages: ${pkgStatus.missing.join(', ')}`);
-        commands.push(`brew install ${pkgStatus.missing.join(' ')}`);
+      // Dependency not executed or failed
+      if (!depStatus || (depStatus !== 'success' && depStatus !== 'skipped')) {
+        blockedBy.push(depId);
       }
     }
 
     return {
-      passed: issues.length === 0,
-      issues,
-      commands,
-      instructions: this._getMacOSInstructions(issues, commands)
+      satisfied: blockedBy.length === 0,
+      blockedBy
     };
   }
 
   /**
-   * Get macOS installation instructions
-   * @param {string[]} issues
-   * @param {string[]} commands
-   * @returns {string}
+   * Execute a single installation step
+   * @param {Object} step - Step to execute
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<{success: boolean, output: string, error: string|null, status: string}>}
    */
-  _getMacOSInstructions(issues, commands) {
-    if (issues.length === 0) {
-      return 'All prerequisites are installed.';
+  async executeStep(step, onProgress = null) {
+    this.currentStep = step;
+    console.log(`[RAVEInstaller] Executing step: ${step.id} (${step.name})`);
+
+    if (onProgress) {
+      onProgress({
+        type: 'step-start',
+        step: { ...step, status: 'running' },
+        timestamp: new Date().toISOString()
+      });
     }
 
-    let instructions = 'The following prerequisites are missing:\n\n';
-    
-    for (let i = 0; i < issues.length; i++) {
-      instructions += `${i + 1}. ${issues[i]}\n`;
-    }
-    
-    instructions += '\nTo fix, open Terminal and run:\n\n';
-    
-    for (const cmd of commands) {
-      instructions += `  ${cmd}\n`;
-    }
-    
-    instructions += '\nAfter installing prerequisites, click "Install Anyway" or restart the installation.';
-    
-    return instructions;
-  }
+    const sessionId = `install-${step.id}-${Date.now()}`;
+    const sessionType = step.type === 'rscript' ? 'rscript' : 'shell';
+    const rPath = this.sessionManager?.getRPath() || 'Rscript';
 
-  /**
-   * Check Windows prerequisites (Rtools)
-   * @returns {Promise<Object>}
-   */
-  async _checkWindowsPrerequisites() {
-    const issues = [];
-    const commands = [];
-    
-    // Check for Rtools by looking for gcc in PATH or common locations
-    const hasRtools = await this._checkRtools();
-    
-    if (!hasRtools) {
-      issues.push('Rtools is not installed or not in PATH');
-      commands.push('Download and install Rtools from: https://cran.r-project.org/bin/windows/Rtools/');
+    // Create session
+    const sessionResult = this.shellSessionManager.createSession(sessionId, {
+      type: sessionType,
+      rPath
+    });
+
+    if (!sessionResult.success) {
+      return {
+        success: false,
+        output: '',
+        error: sessionResult.error,
+        status: 'failed'
+      };
+    }
+
+    // Register output callback
+    if (onProgress) {
+      this.shellSessionManager.registerOutputCallback(sessionId, (data) => {
+        onProgress({
+          type: 'output',
+          step: { ...step },
+          output: data,
+          timestamp: data.timestamp
+        });
+      });
+    }
+
+    // Execute command
+    // SUDO_ASKPASS is always set up - if command needs sudo, helper will prompt
+    const executeResult = await this.shellSessionManager.execute(sessionId, step.run, {
+      env: step.env || {},
+      timeout: step.timeout || 1800000 // Default 30 minutes
+    });
+
+    // Cleanup
+    this.shellSessionManager.terminateSession(sessionId);
+    this.currentStep = null;
+
+    const status = executeResult.success ? 'success' : 'failed';
+
+    if (onProgress) {
+      onProgress({
+        type: executeResult.success ? 'step-complete' : 'step-failed',
+        step: { ...step, status },
+        output: executeResult.output,
+        error: executeResult.error,
+        timestamp: new Date().toISOString()
+      });
     }
 
     return {
-      passed: issues.length === 0,
-      issues,
-      commands,
-      instructions: this._getWindowsInstructions(issues, commands)
+      success: executeResult.success,
+      output: executeResult.output,
+      error: executeResult.error,
+      status
     };
   }
 
   /**
-   * Check if Rtools is installed on Windows
-   * @returns {Promise<boolean>}
+   * Execute the full installation workflow
+   * @param {Function} onProgress - Progress callback
+   * @returns {Promise<{success: boolean, completed: number, failed: number, skipped: number, blocked: number}>}
    */
-  async _checkRtools() {
-    return new Promise((resolve) => {
-      // Try to find gcc which comes with Rtools
-      const where = spawn('where', ['gcc'], { windowsHide: true });
-      
-      let output = '';
-      where.stdout.on('data', (data) => {
-        output += data.toString();
-      });
+  async executeInstallation(onProgress = null) {
+    console.log('[RAVEInstaller] Starting installation workflow');
 
-      where.on('close', (code) => {
-        if (code === 0 && output.includes('Rtools')) {
-          resolve(true);
-        } else {
-          // Also check common Rtools paths
-          const rtoolsPaths = [
-            'C:\\rtools44\\usr\\bin\\gcc.exe',
-            'C:\\rtools43\\usr\\bin\\gcc.exe',
-            'C:\\rtools42\\usr\\bin\\gcc.exe',
-            'C:\\rtools40\\usr\\bin\\gcc.exe',
-            'C:\\Rtools\\bin\\gcc.exe'
-          ];
-          
-          for (const rtoolsPath of rtoolsPaths) {
-            if (fs.existsSync(rtoolsPath)) {
-              resolve(true);
-              return;
-            }
-          }
-          resolve(false);
+    this._aborted = false;
+    let completed = 0;
+    let failed = 0;
+    let skipped = 0;
+    let blocked = 0;
+
+    try {
+      // Step 1: Terminate all R sessions
+      console.log('[RAVEInstaller] Terminating existing R sessions');
+      this.sessionManager.terminateAll();
+
+      // Step 2: Load checklist
+      const loadResult = await this.loadChecklist();
+      if (!loadResult.success) {
+        if (onProgress) {
+          onProgress({
+            type: 'error',
+            error: loadResult.error,
+            timestamp: new Date().toISOString()
+          });
         }
-      });
+        return { success: false, completed: 0, failed: 1, skipped: 0, blocked: 0 };
+      }
 
-      where.on('error', () => {
-        resolve(false);
-      });
+      // Step 3: Sort steps by dependencies
+      const sortResult = this.topologicalSort(this.checklist.steps);
+      if (!sortResult.success) {
+        if (onProgress) {
+          onProgress({
+            type: 'error',
+            error: sortResult.error,
+            timestamp: new Date().toISOString()
+          });
+        }
+        return { success: false, completed: 0, failed: 1, skipped: 0, blocked: 0 };
+      }
 
-      setTimeout(() => {
-        where.kill();
-        resolve(false);
-      }, 5000);
+      this.steps = sortResult.sorted;
+      
+      const executedSteps = [];
+
+      if (onProgress) {
+        onProgress({
+          type: 'installation-start',
+          checklist: this.checklist,
+          steps: this.steps,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Step 4: Execute each step in order
+      for (let i = 0; i < this.steps.length; i++) {
+        if (this._aborted) {
+          console.log('[RAVEInstaller] Installation aborted by user');
+          break;
+        }
+
+        const step = this.steps[i];
+        
+        // Evaluate condition - can we skip this step?
+        const conditionResult = await this.evaluateCondition(step);
+        if (conditionResult.canSkip) {
+          console.log(`[RAVEInstaller] Step ${step.id} condition satisfied - skipping`);
+          step.status = 'skipped';
+          step.output = conditionResult.output;
+          executedSteps.push(step);
+          skipped++;
+
+          if (onProgress) {
+            onProgress({
+              type: 'step-skipped',
+              step: { ...step },
+              reason: 'Condition already satisfied',
+              timestamp: new Date().toISOString()
+            });
+          }
+          continue;
+        }
+
+        // Check dependencies
+        const depsResult = this.checkDependencies(step, executedSteps);
+        if (!depsResult.satisfied) {
+          console.log(`[RAVEInstaller] Step ${step.id} blocked by: ${depsResult.blockedBy.join(', ')}`);
+          step.status = 'blocked';
+          step.blockedBy = depsResult.blockedBy;
+          executedSteps.push(step);
+          blocked++;
+
+          if (onProgress) {
+            onProgress({
+              type: 'step-blocked',
+              step: { ...step },
+              blockedBy: depsResult.blockedBy,
+              required: step.required,
+              manualInstructions: step.manualInstructions,
+              timestamp: new Date().toISOString()
+            });
+          }
+
+          // If required step is blocked, wait for user decision
+          if (step.required) {
+            console.log(`[RAVEInstaller] Required step blocked - waiting for user decision`);
+            await this._waitForProceedSignal();
+            
+            if (this._aborted) {
+              console.log('[RAVEInstaller] Installation aborted during blocked step');
+              break;
+            }
+            
+            // User chose to proceed anyway - mark as skipped
+            console.log(`[RAVEInstaller] User chose to proceed - skipping ${step.id}`);
+            step.status = 'skipped';
+            skipped++;
+            
+            if (onProgress) {
+              onProgress({
+                type: 'step-skipped',
+                step: { ...step },
+                reason: 'User chose to proceed anyway',
+                timestamp: new Date().toISOString()
+              });
+            }
+          } else {
+            // Optional step blocked - auto-skip
+            console.log(`[RAVEInstaller] Optional step blocked - auto-skipping ${step.id}`);
+            step.status = 'skipped';
+            skipped++;
+          }
+          
+          continue;
+        }
+
+        // Execute step
+        const execResult = await this.executeStep(step, onProgress);
+        step.status = execResult.status;
+        step.output = execResult.output;
+        step.error = execResult.error;
+        executedSteps.push(step);
+
+        if (execResult.success) {
+          completed++;
+        } else {
+          failed++;
+          
+          // If required step failed, wait for user decision
+          if (step.required) {
+            console.log(`[RAVEInstaller] Required step failed - waiting for user decision`);
+            
+            if (onProgress) {
+              onProgress({
+                type: 'step-requires-action',
+                step: { ...step },
+                error: execResult.error,
+                manualInstructions: step.manualInstructions,
+                timestamp: new Date().toISOString()
+              });
+            }
+            
+            await this._waitForProceedSignal();
+            
+            if (this._aborted) {
+              console.log('[RAVEInstaller] Installation aborted after failed step');
+              break;
+            }
+            
+            // User chose to proceed - mark as skipped
+            console.log(`[RAVEInstaller] User chose to proceed after failure - marking ${step.id} as skipped`);
+            step.status = 'skipped';
+            skipped++;
+          }
+        }
+      }
+
+      // Installation complete
+      const success = failed === 0 && !this._aborted;
+
+      if (onProgress) {
+        onProgress({
+          type: 'installation-complete',
+          success,
+          completed,
+          failed,
+          skipped,
+          blocked,
+          aborted: this._aborted,
+          steps: executedSteps,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      console.log('[RAVEInstaller] Installation finished:', { success, completed, failed, skipped, blocked });
+
+      return { success, completed, failed, skipped, blocked };
+
+    } finally {
+      // Cleanup handled by shell session manager
+    }
+  }
+
+  /**
+   * Wait for proceed signal from UI
+   * @returns {Promise<void>}
+   */
+  _waitForProceedSignal() {
+    return new Promise((resolve) => {
+      this._proceedSignal = resolve;
     });
   }
 
   /**
-   * Get Windows installation instructions
-   * @param {string[]} issues
-   * @param {string[]} commands
-   * @returns {string}
+   * Signal to proceed anyway (skip current blocked/failed step)
    */
-  _getWindowsInstructions(issues, commands) {
-    if (issues.length === 0) {
-      return 'All prerequisites are installed.';
-    }
-
-    let instructions = 'The following prerequisites are missing:\n\n';
-    
-    for (let i = 0; i < issues.length; i++) {
-      instructions += `${i + 1}. ${issues[i]}\n`;
-    }
-    
-    instructions += '\nTo install Rtools:\n\n';
-    instructions += '1. Go to https://cran.r-project.org/bin/windows/Rtools/\n';
-    instructions += '2. Download the version matching your R version\n';
-    instructions += '3. Run the installer with default options\n';
-    instructions += '4. Restart your computer after installation\n';
-    
-    instructions += '\nAfter installing prerequisites, click "Install Anyway" or restart the installation.';
-    
-    return instructions;
-  }
-
-  /**
-   * Check Linux prerequisites using ravemanager::system_requirements()
-   * Uses sessionManager for R execution (gets rPath from detector)
-   * @returns {Promise<Object>}
-   */
-  async _checkLinuxPrerequisites() {
-    const sessionId = `linux-prereq-check-${Date.now()}`;
-    
-    try {
-      // Create headless session (sessionManager gets rPath from detector)
-      const sessionResult = await this.sessionManager.createSession(sessionId, null, { headless: true });
-      if (!sessionResult.success) {
-        console.error('Failed to create session for Linux prerequisite check:', sessionResult.error);
-        return {
-          passed: true,
-          issues: [],
-          commands: [],
-          instructions: 'Could not verify prerequisites. Proceeding with installation.'
-        };
-      }
-
-      // Use ravemanager to detect system requirements (sudo = FALSE)
-      const checkCode = `
-tryCatch({
-  if(require('ravemanager', quietly = TRUE)) {
-    reqs <- ravemanager::system_requirements(sudo = FALSE)
-    if(length(reqs) > 0) {
-      cat('SYSTEM_REQUIREMENTS_START\\n')
-      for(req in reqs) {
-        cat(req, '\\n')
-      }
-      cat('SYSTEM_REQUIREMENTS_END\\n')
-    } else {
-      cat('NO_REQUIREMENTS\\n')
-    }
-  } else {
-    cat('RAVEMANAGER_NOT_FOUND\\n')
-  }
-}, error = function(e) {
-  cat('CHECK_ERROR:', e$message, '\\n')
-})
-`;
-
-      // Execute with 30 second timeout
-      const result = await this.sessionManager.execute(sessionId, checkCode, 30000);
-      
-      // Clean up session
-      this.sessionManager.terminateSession(sessionId);
-
-      const output = result.output || '';
-
-      if (output.includes('NO_REQUIREMENTS')) {
-        return {
-          passed: true,
-          issues: [],
-          commands: [],
-          instructions: 'All system requirements are satisfied.'
-        };
-      } else if (output.includes('SYSTEM_REQUIREMENTS_START')) {
-        // Extract requirements between markers
-        const match = output.match(/SYSTEM_REQUIREMENTS_START\n([\s\S]*?)SYSTEM_REQUIREMENTS_END/);
-        if (match) {
-          const requirements = match[1].trim().split('\n').filter(r => r.trim());
-          return {
-            passed: false,
-            issues: ['Missing system libraries detected'],
-            commands: requirements,
-            instructions: this._getLinuxInstructions(requirements)
-          };
-        } else {
-          return {
-            passed: true,
-            issues: [],
-            commands: [],
-            instructions: 'All system requirements are satisfied.'
-          };
-        }
-      } else if (output.includes('RAVEMANAGER_NOT_FOUND')) {
-        // ravemanager not installed yet, will be installed during installation
-        return {
-          passed: true,
-          issues: [],
-          commands: [],
-          instructions: 'Prerequisites will be checked during installation.'
-        };
-      } else {
-        // Error or unexpected output, don't block installation
-        console.warn('Linux prerequisite check returned unexpected output:', output, result.error);
-        return {
-          passed: true,
-          issues: [],
-          commands: [],
-          instructions: 'Could not verify prerequisites. Proceeding with installation.'
-        };
-      }
-    } catch (err) {
-      // Clean up session on error
-      this.sessionManager.terminateSession(sessionId);
-      console.error('Failed to check Linux prerequisites:', err);
-      return {
-        passed: true,
-        issues: [],
-        commands: [],
-        instructions: 'Could not verify prerequisites. Proceeding with installation.'
-      };
+  proceedAnyway() {
+    if (this._proceedSignal) {
+      console.log('[RAVEInstaller] Proceed signal received');
+      this._proceedSignal();
+      this._proceedSignal = null;
     }
   }
 
   /**
-   * Get Linux installation instructions
-   * @param {string[]} commands - apt/yum install commands
-   * @returns {string}
+   * Abort the installation
    */
-  _getLinuxInstructions(commands) {
-    if (commands.length === 0) {
-      return 'All system requirements are satisfied.';
-    }
-
-    let instructions = 'The following system libraries are missing.\n';
-    instructions += 'Please run these commands in a terminal (requires sudo):\n\n';
-    
-    for (const cmd of commands) {
-      instructions += `  ${cmd}\n`;
+  abort() {
+    console.log('[RAVEInstaller] Abort requested');
+    this._aborted = true;
+    if (this._proceedSignal) {
+      this._proceedSignal();
+      this._proceedSignal = null;
     }
     
-    instructions += '\nAfter installing the libraries, click "Install Anyway" or restart the installation.';
-    
-    return instructions;
-  }
-
-  /**
-   * Check prerequisites for the current platform
-   * Uses cached results if available and valid
-   * Uses sessionManager.getRPath() for R executable path on Linux
-   * @param {boolean} forceCheck - Force re-check ignoring cache
-   * @returns {Promise<Object>}
-   */
-  async checkPrerequisites(forceCheck = false) {
-    // Check cache first
-    if (!forceCheck) {
-      const cached = this._getCachedPrerequisites();
-      if (cached) {
-        console.log('Using cached prerequisite results');
-        return {
-          passed: cached.passed,
-          issues: cached.issues,
-          commands: cached.commands,
-          instructions: cached.instructions,
-          platform: this.platform,
-          cached: true
-        };
-      }
-    }
-
-    console.log('Checking prerequisites for platform:', this.platform);
-    
-    let result;
-    
-    if (this.platform === 'darwin') {
-      result = await this._checkMacOSPrerequisites();
-    } else if (this.platform === 'win32') {
-      result = await this._checkWindowsPrerequisites();
-    } else if (this.platform === 'linux') {
-      result = await this._checkLinuxPrerequisites();
-    } else {
-      // Unknown platform, don't block
-      result = {
-        passed: true,
-        issues: [],
-        commands: [],
-        instructions: 'Unknown platform. Proceeding with installation.'
-      };
-    }
-
-    // Cache the result
-    this._cachePrerequisites(result);
-
-    return {
-      ...result,
-      platform: this.platform,
-      cached: false
-    };
+    // Terminate any running shell sessions
+    this.shellSessionManager.terminateAll();
   }
 
   /**

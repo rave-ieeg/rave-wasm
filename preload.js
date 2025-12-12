@@ -6,6 +6,16 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Expose protected methods that allow the renderer process to use
 // ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld(
+  'electronAPI',
+  {
+    // Listen for installation console window close
+    onInstallationConsoleClosed: (callback) => {
+      ipcRenderer.on('installation-console-closed', () => callback());
+    }
+  }
+);
+
+contextBridge.exposeInMainWorld(
   'electron',
   {
     // Platform and version info
@@ -66,9 +76,23 @@ contextBridge.exposeInMainWorld(
       // Clear prerequisite cache
       clearPrerequisiteCache: () => ipcRenderer.invoke('plugin:r:clearPrerequisiteCache'),
       
+      // Execute command chain for prerequisite installation
+      executeCommandChain: (todoList) => ipcRenderer.invoke('plugin:r:executeCommandChain', todoList),
+      
+      // Skip current step in command chain
+      skipCurrentStep: () => ipcRenderer.invoke('plugin:r:skipCurrentStep'),
+      
+      // Abort command chain
+      abortChain: () => ipcRenderer.invoke('plugin:r:abortChain'),
+      
       // Listen for console output
       onConsoleOutput: (callback) => {
         ipcRenderer.on('plugin:r:consoleOutput', (event, data) => callback(data));
+      },
+      
+      // Listen for installation progress
+      onInstallProgress: (callback) => {
+        ipcRenderer.on('plugin:r:installProgress', (event, data) => callback(data));
       }
     },
 
@@ -112,6 +136,9 @@ contextBridge.exposeInMainWorld(
       
       // Open R console window
       openRConsole: (sessionId) => ipcRenderer.invoke('plugin:launchpad:openRConsole', sessionId),
+
+      // Open installation console window
+      openInstallationConsole: () => ipcRenderer.invoke('plugin:launchpad:openInstallationConsole'),
       
       // Show confirmation dialog
       showConfirm: (options) => ipcRenderer.invoke('plugin:launchpad:showConfirm', options),
@@ -127,5 +154,26 @@ contextBridge.exposeInMainWorld(
         ipcRenderer.on('plugin:r:statusChanged', (event, status) => callback(status));
       }
     },
+
+    // Unified Installation APIs
+    installer: {
+      // Start installation workflow
+      start: () => ipcRenderer.invoke('plugin:installer:start'),
+      
+      // Proceed with installation despite blocked/failed required step
+      proceedAnyway: () => ipcRenderer.invoke('plugin:installer:proceedAnyway'),
+      
+      // Abort installation
+      abort: () => ipcRenderer.invoke('plugin:installer:abort'),
+      
+      // Respond to command prompt
+      respondToCommandPrompt: (sessionId, response) => 
+        ipcRenderer.invoke('plugin:shell:respondToCommandPrompt', sessionId, response),
+      
+      // Listen for installation progress
+      onProgress: (callback) => {
+        ipcRenderer.on('plugin:installer:progress', (event, data) => callback(data));
+      }
+    }
   }
 );

@@ -189,11 +189,12 @@ class WindowManager {
   }
 
   /**
-   * Create R console window for installation
+   * Create R console window for installation (DEPRECATED - use createInstallationConsoleWindow)
    * @param {string} basePath - Application base path
    * @param {number} port - Server port
    * @param {string} sessionId - R session ID
    * @returns {BrowserWindow} - The console window
+   * @deprecated Use createInstallationConsoleWindow instead
    */
   createRConsoleWindow(basePath, port, sessionId) {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -229,6 +230,56 @@ class WindowManager {
     });
 
     return consoleWindow;
+  }
+
+  /**
+   * Create installation console window with unified checklist UI
+   * @param {string} basePath - Application base path
+   * @param {number} port - Server port
+   * @returns {BrowserWindow} - The installation console window
+   */
+  createInstallationConsoleWindow(basePath, port) {
+    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+    const iconPath = this._findIconPath(basePath);
+    
+    const installWindow = new BrowserWindow({
+      width: Math.floor(width * 0.8),
+      height: Math.floor(height * 0.85),
+      webPreferences: {
+        preload: path.join(basePath, 'preload.js'),
+        nodeIntegration: false,
+        contextIsolation: true,
+        partition: 'persist:launchpad'
+      },
+      ...(iconPath && { icon: iconPath }),
+      title: 'RAVE Installation'
+    });
+
+    // Load installation console page
+    installWindow.loadURL(`http://localhost:${port}/installation-console.html`);
+
+    // Store window reference with unique ID
+    const installId = 'installation-' + Date.now();
+    this.appWindows.set(installId, {
+      window: installWindow,
+      port,
+      sessionId: installId,
+      type: 'installation-console'
+    });
+
+    // Cleanup on close
+    installWindow.on('closed', () => {
+      this.appWindows.delete(installId);
+      
+      // Notify all launchpad windows that installation console closed
+      this.appWindows.forEach(({ window, type }) => {
+        if (type === 'launchpad' && !window.isDestroyed()) {
+          window.webContents.send('installation-console-closed');
+        }
+      });
+    });
+
+    return installWindow;
   }
 
   /**

@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:*">
+  <title>RAVE Installation</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: #2d2d30;
+      padding: 16px 20px;
+      border-bottom: 1px solid #3e3e42;
+    }
+
+    .title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #cccccc;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #3e3e42;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    .progress-text {
+      font-size: 11px;
+      color: #858585;
+      margin-top: 6px;
+    }
+
+    .main-content {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .checklist-panel {
+      width: 350px;
+      background: #252526;
+      border-right: 1px solid #3e3e42;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .checklist-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #858585;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .step-item {
+      background: #2d2d30;
+      border: 1px solid #3e3e42;
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+    }
+
+    .step-item.active {
+      border-color: #667eea;
+      background: #2d2d36;
+    }
+
+    .step-item.success {
+      border-color: #4caf50;
+    }
+
+    .step-item.failed {
+      border-color: #f44336;
+    }
+
+    .step-item.blocked {
+      border-color: #ff9800;
+    }
+
+    .step-item.skipped {
+      opacity: 0.6;
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .step-icon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    .step-icon.pending {
+      background: #3e3e42;
+      color: #858585;
+    }
+
+    .step-icon.running {
+      background: #667eea;
+      color: white;
+      animation: pulse 1.5s infinite;
+    }
+
+    .step-icon.success {
+      background: #4caf50;
+      color: white;
+    }
+
+    .step-icon.failed {
+      background: #f44336;
+      color: white;
+    }
+
+    .step-icon.blocked {
+      background: #ff9800;
+      color: white;
+    }
+
+    .step-icon.skipped {
+      background: #666;
+      color: #aaa;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .step-name {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 500;
+      color: #cccccc;
+    }
+
+    .step-description {
+      font-size: 11px;
+      color: #858585;
+      padding-left: 30px;
+    }
+
+    .step-dependencies {
+      font-size: 10px;
+      color: #667eea;
+      padding-left: 30px;
+      margin-top: 4px;
+    }
+
+    .console-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .console-header {
+      padding: 12px 20px;
+      background: #252526;
+      border-bottom: 1px solid #3e3e42;
+      font-size: 12px;
+      color: #858585;
+    }
+
+    .console-output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      background: #1e1e1e;
+    }
+
+    .log-line {
+      margin-bottom: 2px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+
+    .log-line.stdout {
+      color: #d4d4d4;
+    }
+
+    .log-line.stderr {
+      color: #f48771;
+    }
+
+    .log-line.info {
+      color: #4ec9b0;
+    }
+
+    .log-line.success {
+      color: #4caf50;
+      font-weight: 600;
+    }
+
+    .log-line.error {
+      color: #f44336;
+      font-weight: 600;
+    }
+
+    .log-line.warning {
+      color: #ff9800;
+    }
+
+    /* ANSI color classes */
+    .ansi-black { color: #000000; }
+    .ansi-red { color: #cd3131; }
+    .ansi-green { color: #0dbc79; }
+    .ansi-yellow { color: #e5e510; }
+    .ansi-blue { color: #2472c8; }
+    .ansi-magenta { color: #bc3fbc; }
+    .ansi-cyan { color: #11a8cd; }
+    .ansi-white { color: #e5e5e5; }
+    .ansi-bright-black { color: #666666; }
+    .ansi-bright-red { color: #f14c4c; }
+    .ansi-bright-green { color: #23d18b; }
+    .ansi-bright-yellow { color: #f5f543; }
+    .ansi-bright-blue { color: #3b8eea; }
+    .ansi-bright-magenta { color: #d670d6; }
+    .ansi-bright-cyan { color: #29b8db; }
+    .ansi-bright-white { color: #ffffff; }
+    .ansi-bold { font-weight: bold; }
+    .ansi-dim { opacity: 0.7; }
+    .ansi-italic { font-style: italic; }
+    .ansi-underline { text-decoration: underline; }
+
+    .blocked-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .blocked-modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: #2d2d30;
+      border: 1px solid #3e3e42;
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .modal-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ff9800;
+      margin-bottom: 12px;
+    }
+
+    .modal-body {
+      font-size: 13px;
+      color: #cccccc;
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+
+    .modal-instructions {
+      background: #1e1e1e;
+      border: 1px solid #3e3e42;
+      border-radius: 4px;
+      padding: 12px;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 11px;
+      white-space: pre-wrap;
+      margin-top: 12px;
+      color: #4ec9b0;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+
+    .modal-btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .modal-btn.primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .modal-btn.primary:hover {
+      background: #5568d3;
+    }
+
+    .modal-btn.danger {
+      background: #f44336;
+      color: white;
+    }
+
+    .modal-btn.danger:hover {
+      background: #d32f2f;
+    }
+
+    .footer {
+      background: #2d2d30;
+      padding: 12px 20px;
+      border-top: 1px solid #3e3e42;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer-status {
+      font-size: 12px;
+      color: #858585;
+    }
+
+    .footer-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    .footer-btn {
+      padding: 6px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .footer-btn.close {
+      background: #0e639c;
+      color: white;
+    }
+
+    .footer-btn.close:hover {
+      background: #1177bb;
+    }
+
+    .footer-btn.close:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">RAVE Installation</div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <div class="progress-text" id="progress-text">Initializing...</div>
+  </div>
+
+  <div class="main-content">
+    <div class="checklist-panel">
+      <div class="checklist-title">Installation Steps</div>
+      <div id="checklist"></div>
+    </div>
+
+    <div class="console-panel">
+      <div class="console-header" id="console-header">
+        Installation output will appear here
+      </div>
+      <div class="console-output" id="console-output"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-status" id="footer-status">Ready</div>
+    <div class="footer-buttons">
+      <button class="footer-btn close" id="close-btn" disabled>Close</button>
+    </div>
+  </div>
+
+  <!-- Blocked/Failed Step Modal -->
+  <div class="blocked-modal" id="blocked-modal">
+    <div class="modal-content">
+      <div class="modal-title" id="modal-title">Step Blocked</div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-buttons">
+        <button class="modal-btn danger" id="modal-abort">Abort Installation</button>
+        <button class="modal-btn primary" id="modal-proceed">Proceed Anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Command Prompt Modal -->
+  <div class="blocked-modal" id="command-modal">
+    <div class="modal-content">
+      <div class="modal-title" style="color: #4ec9b0;">Run Command in Terminal</div>
+      <div class="modal-body">
+        <p style="margin-bottom: 16px;">Please copy and run this command in Terminal:</p>
+        <div class="modal-instructions" id="command-text" style="user-select: all; cursor: text;"></div>
+      </div>
+      <div class="modal-buttons">
+        <button class="modal-btn" style="background: #858585;" id="command-skip">Skip</button>
+        <button class="modal-btn danger" id="command-failed">Failed</button>
+        <button class="modal-btn primary" id="command-copy">Copy Command</button>
+        <button class="modal-btn" style="background: #4caf50;" id="command-success">Success</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { installer } = window.electron;
+    const consoleOutput = document.getElementById('console-output');
+    const consoleHeader = document.getElementById('console-header');
+    const checklist = document.getElementById('checklist');
+    const progressFill = document.getElementById('progress-fill');
+    const progressText = document.getElementById('progress-text');
+    const footerStatus = document.getElementById('footer-status');
+    const closeBtn = document.getElementById('close-btn');
+    const blockedModal = document.getElementById('blocked-modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalBody = document.getElementById('modal-body');
+    const modalProceed = document.getElementById('modal-proceed');
+    const modalAbort = document.getElementById('modal-abort');
+    
+    // Command modal elements
+    const commandModal = document.getElementById('command-modal');
+    const commandText = document.getElementById('command-text');
+    const commandCopy = document.getElementById('command-copy');
+    const commandSuccess = document.getElementById('command-success');
+    const commandFailed = document.getElementById('command-failed');
+    const commandSkip = document.getElementById('command-skip');
+    
+    let currentCommandSessionId = null;
+    let currentFullCommand = null;
+
+    let autoScroll = true;
+    let stepsMap = new Map();
+    let totalSteps = 0;
+    let completedSteps = 0;
+
+    // Parse ANSI escape codes
+    function parseAnsi(text) {
+      const ansiRegex = /\x1b\[(\d+(?:;\d+)*)m/g;
+      const parts = [];
+      let lastIndex = 0;
+      let currentClasses = [];
+      
+      let match;
+      while ((match = ansiRegex.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+          const textContent = text.substring(lastIndex, match.index);
+          if (textContent) {
+            parts.push({ text: textContent, classes: [...currentClasses] });
+          }
+        }
+        
+        const codes = match[1].split(';').map(Number);
+        for (const code of codes) {
+          if (code === 0) {
+            currentClasses = [];
+          } else if (code === 1) {
+            currentClasses.push('ansi-bold');
+          } else if (code === 2) {
+            currentClasses.push('ansi-dim');
+          } else if (code >= 30 && code <= 37) {
+            const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
+            currentClasses = currentClasses.filter(c => !c.startsWith('ansi-') || c.includes('bold') || c.includes('dim'));
+            currentClasses.push(`ansi-${colors[code - 30]}`);
+          } else if (code >= 90 && code <= 97) {
+            const colors = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
+            currentClasses = currentClasses.filter(c => !c.startsWith('ansi-') || c.includes('bold') || c.includes('dim'));
+            currentClasses.push(`ansi-bright-${colors[code - 90]}`);
+          }
+        }
+        
+        lastIndex = match.index + match[0].length;
+      }
+      
+      if (lastIndex < text.length) {
+        const textContent = text.substring(lastIndex);
+        if (textContent) {
+          parts.push({ text: textContent, classes: [...currentClasses] });
+        }
+      }
+      
+      return parts;
+    }
+
+    function addLog(message, type = 'stdout') {
+      const line = document.createElement('div');
+      line.className = `log-line ${type}`;
+      
+      const parts = parseAnsi(message);
+      if (parts.length === 0) {
+        line.textContent = message;
+      } else {
+        for (const part of parts) {
+          if (part.classes.length > 0) {
+            const span = document.createElement('span');
+            span.className = part.classes.join(' ');
+            span.textContent = part.text;
+            line.appendChild(span);
+          } else {
+            line.appendChild(document.createTextNode(part.text));
+          }
+        }
+      }
+      
+      consoleOutput.appendChild(line);
+      
+      if (autoScroll) {
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+      }
+    }
+
+    function createStepElement(step) {
+      const stepEl = document.createElement('div');
+      stepEl.className = 'step-item';
+      stepEl.id = `step-${step.id}`;
+      
+      const icon = document.createElement('div');
+      icon.className = 'step-icon pending';
+      icon.textContent = '○';
+      
+      const name = document.createElement('div');
+      name.className = 'step-name';
+      name.textContent = step.name;
+      
+      const header = document.createElement('div');
+      header.className = 'step-header';
+      header.appendChild(icon);
+      header.appendChild(name);
+      
+      stepEl.appendChild(header);
+      
+      if (step.description) {
+        const desc = document.createElement('div');
+        desc.className = 'step-description';
+        desc.textContent = step.description;
+        stepEl.appendChild(desc);
+      }
+      
+      if (step.needs && step.needs.length > 0) {
+        const deps = document.createElement('div');
+        deps.className = 'step-dependencies';
+        deps.textContent = `Depends on: ${step.needs.join(', ')}`;
+        stepEl.appendChild(deps);
+      }
+      
+      return stepEl;
+    }
+
+    function updateStepStatus(stepId, status) {
+      const stepEl = document.getElementById(`step-${stepId}`);
+      if (!stepEl) return;
+      
+      const icon = stepEl.querySelector('.step-icon');
+      
+      // Remove old classes
+      stepEl.classList.remove('active', 'success', 'failed', 'blocked', 'skipped');
+      icon.classList.remove('pending', 'running', 'success', 'failed', 'blocked', 'skipped');
+      
+      // Add new classes and icon
+      switch (status) {
+        case 'running':
+          stepEl.classList.add('active');
+          icon.classList.add('running');
+          icon.textContent = '●';
+          break;
+        case 'success':
+          stepEl.classList.add('success');
+          icon.classList.add('success');
+          icon.textContent = '✓';
+          completedSteps++;
+          break;
+        case 'failed':
+          stepEl.classList.add('failed');
+          icon.classList.add('failed');
+          icon.textContent = '✗';
+          break;
+        case 'blocked':
+          stepEl.classList.add('blocked');
+          icon.classList.add('blocked');
+          icon.textContent = '⚠';
+          break;
+        case 'skipped':
+          stepEl.classList.add('skipped');
+          icon.classList.add('skipped');
+          icon.textContent = '○';
+          completedSteps++;
+          break;
+        default:
+          icon.classList.add('pending');
+          icon.textContent = '○';
+      }
+      
+      updateProgress();
+    }
+
+    function updateProgress() {
+      const percentage = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
+      progressFill.style.width = `${percentage}%`;
+      progressText.textContent = `${completedSteps} of ${totalSteps} steps completed`;
+    }
+
+    function showBlockedModal(step, message, instructions) {
+      modalTitle.textContent = step.required ? 'Required Step Failed' : 'Step Blocked';
+      
+      let bodyHtml = `<strong>${step.name}</strong><br><br>${message}`;
+      
+      if (instructions) {
+        bodyHtml += `<div class="modal-instructions">${instructions}</div>`;
+      }
+      
+      modalBody.innerHTML = bodyHtml;
+      blockedModal.classList.add('active');
+    }
+
+    function hideBlockedModal() {
+      blockedModal.classList.remove('active');
+    }
+
+    // Detect manual scrolling
+    consoleOutput.addEventListener('scroll', () => {
+      const isAtBottom = Math.abs(consoleOutput.scrollHeight - consoleOutput.scrollTop - consoleOutput.clientHeight) < 50;
+      autoScroll = isAtBottom;
+    });
+
+    // Close button
+    closeBtn.addEventListener('click', () => {
+      window.close();
+    });
+
+    // Modal buttons
+    modalProceed.addEventListener('click', async () => {
+      hideBlockedModal();
+      await installer.proceedAnyway();
+    });
+
+    modalAbort.addEventListener('click', async () => {
+      hideBlockedModal();
+      await installer.abort();
+    });
+
+    // Command modal buttons
+    commandCopy.addEventListener('click', () => {
+      navigator.clipboard.writeText(currentFullCommand).then(() => {
+        commandCopy.textContent = 'Copied!';
+        setTimeout(() => {
+          commandCopy.textContent = 'Copy Command';
+        }, 2000);
+      });
+    });
+
+    commandSuccess.addEventListener('click', async () => {
+      commandModal.classList.remove('active');
+      await installer.respondToCommandPrompt(currentCommandSessionId, 'success');
+      currentCommandSessionId = null;
+      currentFullCommand = null;
+    });
+
+    commandFailed.addEventListener('click', async () => {
+      commandModal.classList.remove('active');
+      await installer.respondToCommandPrompt(currentCommandSessionId, 'failed');
+      currentCommandSessionId = null;
+      currentFullCommand = null;
+    });
+
+    commandSkip.addEventListener('click', async () => {
+      commandModal.classList.remove('active');
+      await installer.respondToCommandPrompt(currentCommandSessionId, 'skip');
+      currentCommandSessionId = null;
+      currentFullCommand = null;
+    });
+
+    // Start installation
+    window.addEventListener('load', async () => {
+      try {
+        addLog('===== RAVE Installation =====', 'info');
+        addLog('Loading installation checklist...', 'info');
+        addLog('', 'stdout');
+
+        // Listen for installation progress
+        installer.onProgress((event) => {
+          console.log('[Progress Event]', event.type, event);
+
+          switch (event.type) {
+            case 'password-prompt':
+              addLog('⚠ Administrator Password Required', 'warning');
+              addLog(event.message, 'info');
+              addLog('A password dialog will appear - please enter your administrator password', 'info');
+              addLog('', 'stdout');
+              consoleHeader.textContent = 'Waiting for password...';
+              footerStatus.textContent = 'Password required';
+              break;
+
+            case 'installation-start':
+              totalSteps = event.steps.length;
+              completedSteps = 0;
+              
+              addLog(`Installation workflow: ${event.checklist.name}`, 'info');
+              addLog(`Total steps: ${totalSteps}`, 'info');
+              addLog('', 'stdout');
+              
+              // Build checklist UI
+              event.steps.forEach(step => {
+                const stepEl = createStepElement(step);
+                checklist.appendChild(stepEl);
+                stepsMap.set(step.id, step);
+              });
+              
+              footerStatus.textContent = 'Installing...';
+              break;
+
+            case 'step-start':
+              addLog(`\n[${event.step.id}] ${event.step.name}`, 'info');
+              consoleHeader.textContent = `Running: ${event.step.name}`;
+              updateStepStatus(event.step.id, 'running');
+              break;
+
+            case 'output':
+              if (event.output.type === 'stdout') {
+                addLog(event.output.message, 'stdout');
+              } else if (event.output.type === 'stderr') {
+                addLog(event.output.message, 'stderr');
+              } else if (event.output.type === 'command-prompt') {
+                // Show command prompt modal
+                currentCommandSessionId = event.output.sessionId;
+                currentFullCommand = event.output.fullCommand;
+                commandText.textContent = event.output.command;
+                commandModal.classList.add('active');
+                consoleHeader.textContent = 'Waiting for command execution...';
+                footerStatus.textContent = 'Please run the command in Terminal';
+              }
+              break;
+
+            case 'step-complete':
+              addLog(`✓ ${event.step.name} completed`, 'success');
+              updateStepStatus(event.step.id, 'success');
+              break;
+
+            case 'step-failed':
+              addLog(`✗ ${event.step.name} failed: ${event.error}`, 'error');
+              updateStepStatus(event.step.id, 'failed');
+              break;
+
+            case 'step-skipped':
+              addLog(`○ ${event.step.name} skipped: ${event.reason}`, 'warning');
+              updateStepStatus(event.step.id, 'skipped');
+              break;
+
+            case 'step-blocked':
+              addLog(`⚠ ${event.step.name} blocked by: ${event.blockedBy.join(', ')}`, 'warning');
+              updateStepStatus(event.step.id, 'blocked');
+              
+              if (event.required) {
+                showBlockedModal(
+                  event.step,
+                  `This required step is blocked because its dependencies failed.<br>Blocked by: ${event.blockedBy.join(', ')}`,
+                  event.manualInstructions
+                );
+              }
+              break;
+
+            case 'step-requires-action':
+              showBlockedModal(
+                event.step,
+                `This required step failed.<br><br>${event.error}`,
+                event.manualInstructions
+              );
+              break;
+
+            case 'installation-complete':
+              addLog('', 'stdout');
+              if (event.success) {
+                addLog('===== Installation Completed Successfully =====', 'success');
+              } else if (event.aborted) {
+                addLog('===== Installation Aborted =====', 'warning');
+              } else {
+                addLog('===== Installation Completed with Errors =====', 'error');
+              }
+              addLog(`Completed: ${event.completed}, Failed: ${event.failed}, Skipped: ${event.skipped}, Blocked: ${event.blocked}`, 'info');
+              
+              consoleHeader.textContent = event.success ? 'Installation Complete' : 'Installation Failed';
+              footerStatus.textContent = event.success ? 'Installation successful' : 'Installation failed';
+              closeBtn.disabled = false;
+              break;
+
+            case 'error':
+              addLog('', 'stdout');
+              addLog('===== Installation Error =====', 'error');
+              addLog(`Error: ${event.error}`, 'error');
+              consoleHeader.textContent = 'Error';
+              footerStatus.textContent = 'Installation error';
+              closeBtn.disabled = false;
+              break;
+          }
+        });
+
+        // Start installation
+        const result = await installer.start();
+        
+        if (!result.success && result.error) {
+          addLog('', 'stdout');
+          addLog('===== Installation Failed =====', 'error');
+          addLog(`Error: ${result.error}`, 'error');
+          closeBtn.disabled = false;
+        }
+
+      } catch (err) {
+        addLog('', 'stdout');
+        addLog('===== Installation Error =====', 'error');
+        addLog(`Error: ${err.message}`, 'error');
+        console.error('[Installation Error]', err);
+        footerStatus.textContent = 'Installation error';
+        closeBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

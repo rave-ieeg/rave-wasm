@@ -1,5 +1,6 @@
 const RDetector = require('./r-detector');
 const RSessionManager = require('./r-session-manager');
+const ShellSessionManager = require('./shell-session-manager');
 const RAVEInstaller = require('./rave-installer');
 const { wrapHandler } = require('../../utils/ipc-helpers');
 
@@ -14,9 +15,9 @@ class RPlugin {
     this.cacheManager = cacheManager;
     this.detector = new RDetector(configManager);
     this.sessionManager = new RSessionManager(portManager, this.detector);
-    // Use cacheManager for prerequisite caching (not configManager)
-    // Pass sessionManager for headless R execution (sessionManager has detector for rPath)
-    this.installer = new RAVEInstaller(cacheManager, this.sessionManager);
+    this.shellSessionManager = new ShellSessionManager();
+    // Pass sessionManager and shellSessionManager for command execution
+    this.installer = new RAVEInstaller(this.sessionManager, this.shellSessionManager);
     this.onStatusChangedCallback = null;
   }
 
@@ -158,38 +159,32 @@ class RPlugin {
 
     // Check prerequisites before installation
     ipcMain.handle('plugin:r:checkPrerequisites', wrapHandler(async (event, forceCheck) => {
-      const rPath = this.sessionManager.getRPath();
-      if (!rPath) {
-        return { 
-          success: false, 
-          error: 'R not detected',
-          passed: false,
-          issues: ['R is not installed or not detected'],
-          commands: [],
-          instructions: 'Please install R first. Visit https://cran.r-project.org/ to download R.',
-          platform: this.installer.platform
-        };
-      }
-
       try {
-        // Step 1: Install/update ravemanager first (needed for Linux system_requirements)
-        console.log('Installing/updating ravemanager before prerequisite check...');
-        const ravemanagerResult = await this.installer.installRavemanager();
-        
-        if (!ravemanagerResult.success) {
-          console.warn('Failed to install ravemanager:', ravemanagerResult.error);
-          // Don't fail here, just warn - installation might still work
-        } else {
-          console.log('ravemanager version:', ravemanagerResult.version);
-        }
-
-        // Step 2: Check prerequisites
+        // Always check prerequisites first - don't early-return if R is missing
+        // The prerequisite check will build a comprehensive todoList including R installation
         const prereqResult = await this.installer.checkPrerequisites(forceCheck);
+        
+        const rPath = this.sessionManager.getRPath();
+        
+        // If R is detected, also install/update ravemanager (needed for Linux system_requirements)
+        let ravemanagerVersion = null;
+        if (rPath) {
+          console.log('Installing/updating ravemanager before prerequisite check...');
+          const ravemanagerResult = await this.installer.installRavemanager();
+          
+          if (!ravemanagerResult.success) {
+            console.warn('Failed to install ravemanager:', ravemanagerResult.error);
+            // Don't fail here, just warn - installation might still work
+          } else {
+            console.log('ravemanager version:', ravemanagerResult.version);
+            ravemanagerVersion = ravemanagerResult.version;
+          }
+        }
         
         return {
           success: true,
           ...prereqResult,
-          ravemanagerVersion: ravemanagerResult.version
+          ravemanagerVersion
         };
       } catch (err) {
         console.error('Prerequisite check failed:', err);
@@ -210,6 +205,165 @@ class RPlugin {
       this.installer.clearCache();
       return { success: true };
     }));
+
+    // Execute command chain for prerequisite installation
+    ipcMain.handle('plugin:r:executeCommandChain', wrapHandler(async (event, todoList) => {
+      try {
+        // Check if sudo is needed
+        const needsSudo = todoList.some(item => item.sudo && item.status === 'pending');
+        
+        // Prompt for password early if needed
+        if (needsSudo) {
+          console.log('Sudo required - prompting for password...');
+          const passwordResult = await this.installer._promptForPassword();
+          
+          if (!passwordResult.success) {
+            return {
+              success: false,
+              error: passwordResult.error || 'Password prompt cancelled'
+            };
+          }
+          
+          // Verify password
+          console.log('Verifying password...');
+          const isValid = await this.installer._verifyPassword(passwordResult.password);
+          
+          if (!isValid) {
+            return {
+              success: false,
+              error: 'Incorrect password. Please try again.'
+            };
+          }
+          
+          // Store password in memory and start timeout
+          this.installer._sudoPassword = passwordResult.password;
+          this.installer._startPasswordTimeout();
+          console.log('Password verified and stored in memory');
+        }
+        
+        // Execute chain with progress broadcasting
+        const onProgress = (progressEvent) => {
+          if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('plugin:r:installProgress', progressEvent);
+          }
+        };
+        
+        const result = await this.installer.executeCommandChain(todoList, onProgress);
+        
+        return {
+          success: result.success,
+          completed: result.completed,
+          failed: result.failed,
+          skipped: result.skipped
+        };
+      } catch (err) {
+        console.error('Command chain execution failed:', err);
+        this.installer._clearPassword();
+        return {
+          success: false,
+          error: err.message
+        };
+      }
+    }));
+
+    // Skip current step in command chain
+    ipcMain.handle('plugin:r:skipCurrentStep', wrapHandler(async () => {
+      this.installer.skipCurrentStep();
+      return { success: true };
+    }));
+
+    // Abort command chain
+    ipcMain.handle('plugin:r:abortChain', wrapHandler(async () => {
+      this.installer.abortChain();
+      return { success: true };
+    }));
+
+    // === New Unified Installation IPC Handlers ===
+
+    // Start unified installation (prerequisites + RAVE packages)
+    ipcMain.handle('plugin:installer:start', wrapHandler(async (event) => {
+      try {
+        // Terminate all existing R sessions first
+        console.log('Terminating all existing R sessions before installation...');
+        this.sessionManager.terminateAll();
+
+        // Set up progress broadcasting
+        const onProgress = (progressEvent) => {
+          if (event.sender && !event.sender.isDestroyed()) {
+            event.sender.send('plugin:installer:progress', progressEvent);
+          }
+        };
+
+        // Start installation workflow
+        const result = await this.installer.executeInstallation(onProgress);
+        
+        // Re-check R status after installation
+        if (result.success) {
+          const newStatus = await this.detector.getStatus();
+          if (this.onStatusChangedCallback) {
+            this.onStatusChangedCallback(newStatus);
+          }
+        }
+        
+        return result;
+      } catch (err) {
+        console.error('Installation failed:', err);
+        return {
+          success: false,
+          error: err.message,
+          completed: 0,
+          failed: 0,
+          skipped: 0,
+          blocked: 0
+        };
+      }
+    }));
+
+    // Proceed with installation despite blocked/failed required step
+    ipcMain.handle('plugin:installer:proceedAnyway', wrapHandler(async () => {
+      this.installer.proceedAnyway();
+      return { success: true };
+    }));
+
+    // Abort installation
+    ipcMain.handle('plugin:installer:abort', wrapHandler(async () => {
+      await this.installer.abort();
+      return { success: true };
+    }));
+
+    // === Shell Session Manager IPC Handlers ===
+
+    // Create shell session
+    ipcMain.handle('plugin:shell:createSession', wrapHandler(async (event, sessionId, options) => {
+      return await this.shellSessionManager.createSession(sessionId, options);
+    }));
+
+    // Execute shell/Rscript command
+    ipcMain.handle('plugin:shell:execute', wrapHandler(async (event, sessionId, command, options) => {
+      return await this.shellSessionManager.execute(sessionId, command, options);
+    }));
+
+    // Register shell output callback
+    ipcMain.handle('plugin:shell:registerOutput', wrapHandler(async (event, sessionId) => {
+      this.shellSessionManager.registerOutputCallback(sessionId, (output) => {
+        if (event.sender && !event.sender.isDestroyed()) {
+          event.sender.send('plugin:shell:output', { sessionId, output });
+        }
+      });
+      return { success: true };
+    }));
+
+    // Terminate shell session
+    ipcMain.handle('plugin:shell:terminate', wrapHandler(async (event, sessionId) => {
+      this.shellSessionManager.terminateSession(sessionId);
+      return { success: true };
+    }));
+
+    // Respond to command prompt
+    ipcMain.handle('plugin:shell:respondToCommandPrompt', wrapHandler(async (event, sessionId, response) => {
+      this.shellSessionManager.respondToCommandPrompt(sessionId, response);
+      return { success: true };
+    }));
   }
 
   /**
@@ -219,6 +373,8 @@ class RPlugin {
     console.log('RPlugin cleaning up...');
     this.detector.stopDetection();
     this.sessionManager.terminateAll();
+    this.shellSessionManager.terminateAll();
+    this.installer.abort();
   }
 }
 

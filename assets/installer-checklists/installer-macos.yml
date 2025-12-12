@@ -1,0 +1,148 @@
+# RAVE Installation Checklist for macOS
+# GitHub Actions-style syntax for installation steps
+#
+# CRITICAL SECURITY WARNING:
+# NEVER run Homebrew commands with sudo prefix (sudo brew ...)!
+# Homebrew explicitly refuses to run as root for security reasons.
+# For steps that require elevated privileges, you will be prompted to
+# copy and paste commands into your own Terminal where you can enter
+# your password when needed.
+
+name: RAVE Installation (macOS)
+
+steps:
+  # Step 1: Check and install Homebrew
+  - id: homebrew
+    name: Homebrew Package Manager
+    type: shell
+    if: |
+      # Check if brew exists in architecture-specific location
+      if [ "$(uname -m)" = "arm64" ]; then
+        test -f /opt/homebrew/bin/brew
+      else
+        test -f /usr/local/bin/brew
+      fi
+    run: |
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    required: true
+    timeout: 300000  # 5 minutes
+    description: Homebrew is required to install R and system dependencies
+    manualInstructions: |
+      Open Terminal and run:
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      
+      Follow the on-screen prompts to complete installation.
+
+  # Step 2: Check and install R
+  # NOTE: brew install --cask may need elevated privileges.
+  # You will be prompted to copy and paste the command into Terminal.
+  # NEVER add 'sudo: true' flag - brew must NOT run with sudo prefix!
+  - id: r-language
+    name: R Programming Language
+    type: shell
+    if: (command -v R &> /dev/null && R --version) || (/usr/local/bin/R --version)
+    run: |
+      # Set up brew environment based on CPU architecture
+      if [ "$(uname -m)" = "arm64" ]; then
+        # ARM Mac (Apple Silicon)
+        [ -f /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+      else
+        # Intel Mac
+        [ -f /usr/local/bin/brew ] && eval "$(/usr/local/bin/brew shellenv)"
+      fi
+      
+      if ! command -v R &> /dev/null && ! test -f /usr/local/bin/R; then
+        echo "R not found, installing..."
+        # Use reinstall to handle both fresh install and cleanup of incomplete installations
+        brew reinstall --cask r-app
+      else
+        echo "R is already installed"
+      fi
+    required: true
+    needs: [homebrew]
+    timeout: 600000  # 10 minutes
+    description: R is required to run RAVE
+    manualInstructions: |
+      Open Terminal and run:
+      brew reinstall --cask r-app
+      
+      Or download from:
+      https://cran.r-project.org/bin/macosx/
+
+  # Step 3: Check and install system libraries
+  # NOTE: These libraries don't typically require elevated privileges.
+  # If needed, you will be prompted to copy and paste the command into Terminal.
+  # NEVER add 'sudo: true' flag - brew must NOT run with sudo prefix!
+  - id: system-libraries
+    name: System Libraries (HDF5, FFTW, etc.)
+    type: shell
+    if: brew list hdf5 && brew list fftw && brew list pkg-config && brew list cmake && brew list libpng
+    run: |
+      # Set up brew environment based on CPU architecture
+      if [ "$(uname -m)" = "arm64" ]; then
+        # ARM Mac (Apple Silicon)
+        [ -f /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+      else
+        # Intel Mac
+        [ -f /usr/local/bin/brew ] && eval "$(/usr/local/bin/brew shellenv)"
+      fi
+      brew install hdf5 fftw pkg-config cmake libpng
+    required: true
+    needs: [homebrew]
+    timeout: 900000  # 15 minutes
+    description: System libraries required for RAVE's signal processing features
+    manualInstructions: |
+      Open Terminal and run:
+      brew install hdf5 fftw pkg-config cmake libpng
+      
+      These libraries are required for RAVE's signal processing features.
+
+  # Step 4: Check and install RStudio (optional)
+  # NOTE: brew install --cask may need elevated privileges.
+  # You will be prompted to copy and paste the command into Terminal.
+  # NEVER add 'sudo: true' flag - brew must NOT run with sudo prefix!
+  - id: rstudio
+    name: RStudio IDE
+    type: shell
+    if: test -d /Applications/RStudio.app || test -d /Applications/Posit/RStudio.app
+    run: |
+      # Set up brew environment based on CPU architecture
+      if [ "$(uname -m)" = "arm64" ]; then
+        # ARM Mac (Apple Silicon)
+        [ -f /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
+      else
+        # Intel Mac
+        [ -f /usr/local/bin/brew ] && eval "$(/usr/local/bin/brew shellenv)"
+      fi
+      brew install --cask rstudio
+    required: false
+    needs: [homebrew, r-language]
+    timeout: 600000  # 10 minutes
+    description: RStudio is recommended for R development but not required for RAVE
+    manualInstructions: |
+      Open Terminal and run:
+      brew install --cask rstudio
+      
+      Or download from:
+      https://posit.co/download/rstudio-desktop/
+
+  # Step 5: Install RAVE packages
+  - id: rave-packages
+    name: RAVE Packages
+    type: rscript
+    run: |
+      options(repos = c(RAVE = 'https://rave-ieeg.r-universe.dev', CRAN = 'https://cloud.r-project.org'))
+      install.packages('ravemanager')
+      ravemanager::install()
+      cat("\nINSTALLATION_COMPLETE\n")
+    required: true
+    needs: [r-language, system-libraries]
+    timeout: 1800000  # 30 minutes
+    description: RAVE packages for electrophysiology data analysis
+    manualInstructions: |
+      Open R or RStudio and run:
+      install.packages('ravemanager', repos = 'https://rave-ieeg.r-universe.dev')
+      ravemanager::install()
+      
+      Or follow instructions at:
+      https://rave.wiki/posts/installation/installation.html

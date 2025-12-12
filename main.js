@@ -188,6 +188,14 @@ function setupLaunchpadIPC() {
     return { success: true };
   }));
 
+  // Open installation console window (new unified installation UI)
+  ipcMain.handle('plugin:launchpad:openInstallationConsole', wrapHandler(async (event) => {
+    const port = staticServerPlugin.getPort();
+    const window = windowManager.createInstallationConsoleWindow(__dirname, port);
+    
+    return { success: true };
+  }));
+
   // Show confirmation dialog
   ipcMain.handle('plugin:launchpad:showConfirm', wrapHandler(async (event, options) => {
     const iconPath = getIconPath();

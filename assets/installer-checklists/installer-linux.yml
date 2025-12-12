@@ -1,0 +1,94 @@
+# RAVE Installation Checklist for Linux
+# GitHub Actions-style syntax for installation steps
+
+name: RAVE Installation (Linux)
+
+steps:
+  # Step 1: Check and install R
+  - id: r-language
+    name: R Programming Language
+    type: shell
+    if: R --version
+    run: echo "Please install R using your distribution's package manager (apt/yum/dnf)"
+    required: true
+    timeout: 300000  # 5 minutes
+    description: R is required to run RAVE
+    manualInstructions: |
+      For Ubuntu/Debian:
+      sudo apt update
+      sudo apt install r-base r-base-dev
+      
+      For Fedora/RHEL/CentOS:
+      sudo dnf install R
+      
+      Or follow instructions at:
+      https://cran.r-project.org/bin/linux/
+
+  # Step 2: Check system libraries using ravemanager
+  - id: system-libraries
+    name: System Libraries
+    type: rscript
+    run: |
+      options(repos = c(RAVE = 'https://rave-ieeg.r-universe.dev', CRAN = 'https://cloud.r-project.org'))
+      if(!require('ravemanager', quietly = TRUE)) {
+        install.packages('ravemanager')
+      }
+      reqs <- ravemanager::system_requirements(sudo = FALSE)
+      if(length(reqs) > 0) {
+        cat("\nSYSTEM_REQUIREMENTS:\n")
+        for(req in reqs) {
+          cat(req, "\n")
+        }
+        cat("\nPlease install these libraries using sudo, then retry installation.\n")
+        q(status = 1)
+      } else {
+        cat("\nAll system libraries are installed.\n")
+      }
+    required: true
+    needs: [r-language]
+    timeout: 300000  # 5 minutes
+    description: System libraries required for RAVE package compilation
+    manualInstructions: |
+      Install ravemanager first:
+      Rscript -e "install.packages('ravemanager', repos = 'https://rave-ieeg.r-universe.dev')"
+      
+      Then check requirements:
+      Rscript -e "ravemanager::system_requirements()"
+      
+      Install the listed libraries using sudo with your package manager (apt/yum/dnf).
+
+  # Step 3: Check and install RStudio (optional)
+  - id: rstudio
+    name: RStudio IDE
+    type: shell
+    if: which rstudio
+    run: echo "Please download and install RStudio from https://posit.co/download/rstudio-desktop/"
+    required: false
+    timeout: 300000  # 5 minutes
+    description: RStudio is recommended for R development but not required for RAVE
+    manualInstructions: |
+      Download and install RStudio from:
+      https://posit.co/download/rstudio-desktop/
+      
+      Choose the appropriate package for your Linux distribution.
+
+  # Step 4: Install RAVE packages
+  - id: rave-packages
+    name: RAVE Packages
+    type: rscript
+    run: |
+      options(repos = c(RAVE = 'https://rave-ieeg.r-universe.dev', CRAN = 'https://cloud.r-project.org'))
+      install.packages('ravemanager')
+      ravemanager::install()
+      cat("\nINSTALLATION_COMPLETE\n")
+    required: true
+    needs: [r-language, system-libraries]
+    timeout: 1800000  # 30 minutes
+    description: RAVE packages for electrophysiology data analysis
+    manualInstructions: |
+      Open R or RStudio and run:
+      install.packages('ravemanager', repos = 'https://rave-ieeg.r-universe.dev')
+      ravemanager::install()
+      
+      Or follow instructions at:
+      https://rave.wiki/posts/installation/installation.html

@@ -1,0 +1,73 @@
+# RAVE Installation Checklist for Windows
+# GitHub Actions-style syntax for installation steps
+
+name: RAVE Installation (Windows)
+
+steps:
+  # Step 1: Check and install R
+  - id: r-language
+    name: R Programming Language
+    type: shell
+    if: R --version
+    run: echo "Please download and install R from https://cran.r-project.org/bin/windows/base/"
+    required: true
+    timeout: 300000  # 5 minutes
+    description: R is required to run RAVE
+    manualInstructions: |
+      Download and install R from:
+      https://cran.r-project.org/bin/windows/base/
+      
+      Follow the installer prompts with default options.
+
+  # Step 2: Check and install Rtools
+  - id: rtools
+    name: Rtools for Windows
+    type: shell
+    if: where gcc | findstr Rtools
+    run: echo "Please download and install Rtools from https://cran.r-project.org/bin/windows/Rtools/"
+    required: true
+    timeout: 300000  # 5 minutes
+    description: Rtools is required to compile R packages from source
+    manualInstructions: |
+      Download and install Rtools from:
+      https://cran.r-project.org/bin/windows/Rtools/
+      
+      Choose the version matching your R installation.
+      Follow the installer prompts with default options.
+      Restart your computer after installation.
+
+  # Step 3: Check and install RStudio (optional)
+  - id: rstudio
+    name: RStudio IDE
+    type: shell
+    if: test -f "C:\Program Files\RStudio\rstudio.exe"
+    run: echo "Please download and install RStudio from https://posit.co/download/rstudio-desktop/"
+    required: false
+    timeout: 300000  # 5 minutes
+    description: RStudio is recommended for R development but not required for RAVE
+    manualInstructions: |
+      Download and install RStudio from:
+      https://posit.co/download/rstudio-desktop/
+      
+      Follow the installer prompts with default options.
+
+  # Step 4: Install RAVE packages
+  - id: rave-packages
+    name: RAVE Packages
+    type: rscript
+    run: |
+      options(repos = c(RAVE = 'https://rave-ieeg.r-universe.dev', CRAN = 'https://cloud.r-project.org'))
+      install.packages('ravemanager')
+      ravemanager::install()
+      cat("\nINSTALLATION_COMPLETE\n")
+    required: true
+    needs: [r-language, rtools]
+    timeout: 1800000  # 30 minutes
+    description: RAVE packages for electrophysiology data analysis
+    manualInstructions: |
+      Open R or RStudio and run:
+      install.packages('ravemanager', repos = 'https://rave-ieeg.r-universe.dev')
+      ravemanager::install()
+      
+      Or follow instructions at:
+      https://rave.wiki/posts/installation/installation.html
