@@ -7,6 +7,18 @@ const { app } = require('electron');
 /**
  * Cache Manager for lazy-downloading app data
  * Downloads and caches large data files (like brain models) to user's cache directory
+ * 
+ * IMPORTANT: Cache Root Path
+ * All application cache files are stored under:
+ *   path.join(app.getPath('appData'), 'rave-wasm')
+ * 
+ * Platform-specific paths:
+ *   - macOS: ~/Library/Application Support/rave-wasm/
+ *   - Windows: %APPDATA%/rave-wasm/
+ *   - Linux: ~/.config/rave-wasm/
+ * 
+ * This path should be consistent with config-manager.js.
+ * All files in this directory can be removed by the "Clear Cache" button.
  */
 class CacheManager {
   constructor() {
@@ -374,6 +386,76 @@ class CacheManager {
       fs.mkdirSync(this.cacheDir, { recursive: true });
       this.manifestCache.clear();
       console.log('Cache cleared');
+    }
+  }
+
+  // ============================================================
+  // JSON Cache Methods
+  // For caching arbitrary JSON data (e.g., prerequisite check results)
+  // ============================================================
+
+  /**
+   * Get the path to the JSON cache file
+   * @param {string} key - Cache key
+   * @returns {string}
+   */
+  _getJsonCachePath(key) {
+    // Sanitize key to be a valid filename
+    const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return path.join(this.cacheDir, 'json-cache', `${safeKey}.json`);
+  }
+
+  /**
+   * Get cached JSON data
+   * @param {string} key - Cache key
+   * @returns {Object|null}
+   */
+  getJsonCache(key) {
+    const cachePath = this._getJsonCachePath(key);
+    if (fs.existsSync(cachePath)) {
+      try {
+        const content = fs.readFileSync(cachePath, 'utf8');
+        return JSON.parse(content);
+      } catch (err) {
+        console.error(`Failed to read JSON cache for ${key}:`, err);
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Set cached JSON data
+   * @param {string} key - Cache key
+   * @param {Object} data - Data to cache
+   */
+  setJsonCache(key, data) {
+    const cachePath = this._getJsonCachePath(key);
+    const dir = path.dirname(cachePath);
+    
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    try {
+      fs.writeFileSync(cachePath, JSON.stringify(data, null, 2));
+    } catch (err) {
+      console.error(`Failed to write JSON cache for ${key}:`, err);
+    }
+  }
+
+  /**
+   * Remove cached JSON data
+   * @param {string} key - Cache key
+   */
+  removeJsonCache(key) {
+    const cachePath = this._getJsonCachePath(key);
+    if (fs.existsSync(cachePath)) {
+      try {
+        fs.unlinkSync(cachePath);
+      } catch (err) {
+        console.error(`Failed to remove JSON cache for ${key}:`, err);
+      }
     }
   }
 }

@@ -7,7 +7,12 @@ const path = require('path');
  */
 class ConfigManager {
   constructor() {
-    this.userDataPath = app.getPath('userData');
+    // Use consistent path with cache-manager.js
+    // macOS: ~/Library/Application Support/rave-wasm
+    // Windows: %APPDATA%/rave-wasm
+    // Linux: ~/.config/rave-wasm
+    const appDataPath = app.getPath('appData');
+    this.userDataPath = path.join(appDataPath, 'rave-wasm');
     this.configPath = path.join(this.userDataPath, 'config.json');
     this.cachePath = path.join(this.userDataPath, 'cache');
     this.dataPath = path.join(this.userDataPath, 'data');

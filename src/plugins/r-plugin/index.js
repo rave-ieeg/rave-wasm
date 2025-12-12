@@ -1,17 +1,22 @@
 const RDetector = require('./r-detector');
 const RSessionManager = require('./r-session-manager');
+const RAVEInstaller = require('./rave-installer');
 const { wrapHandler } = require('../../utils/ipc-helpers');
 
 /**
  * R Plugin for managing R sessions and execution
  */
 class RPlugin {
-  constructor(configManager, portManager) {
+  constructor(configManager, portManager, cacheManager) {
     this.name = 'r-plugin';
     this.configManager = configManager;
     this.portManager = portManager;
+    this.cacheManager = cacheManager;
     this.detector = new RDetector(configManager);
-    this.sessionManager = new RSessionManager(portManager);
+    this.sessionManager = new RSessionManager(portManager, this.detector);
+    // Use cacheManager for prerequisite caching (not configManager)
+    // Pass sessionManager for headless R execution (sessionManager has detector for rPath)
+    this.installer = new RAVEInstaller(cacheManager, this.sessionManager);
     this.onStatusChangedCallback = null;
   }
 
@@ -66,12 +71,7 @@ class RPlugin {
 
     // Create R session
     ipcMain.handle('plugin:r:createSession', wrapHandler(async (event, sessionId) => {
-      const status = await this.detector.getStatus();
-      if (!status.detected) {
-        return { success: false, error: 'R not detected' };
-      }
-
-      return await this.sessionManager.createSession(sessionId, status.path);
+      return await this.sessionManager.createSession(sessionId);
     }));
 
     // Execute R code
@@ -102,21 +102,16 @@ class RPlugin {
 
     // Install RAVE packages
     ipcMain.handle('plugin:r:installRAVE', wrapHandler(async () => {
-      const status = await this.detector.getStatus();
-      if (!status.detected) {
-        return { success: false, error: 'R not detected' };
-      }
-
       // Terminate all existing R sessions first
       console.log('Terminating all existing R sessions before installation...');
       this.sessionManager.terminateAll();
 
-      // Create installation session
+      // Create installation session (sessionManager gets rPath from detector)
       const installSessionId = `install-${Date.now()}`;
-      const sessionResult = await this.sessionManager.createSession(installSessionId, status.path);
+      const sessionResult = await this.sessionManager.createSession(installSessionId);
       
       if (!sessionResult.success) {
-        return { success: false, error: 'Failed to create R session for installation', sessionId: null };
+        return { success: false, error: sessionResult.error || 'Failed to create R session for installation', sessionId: null };
       }
 
       // Return session ID so window can be opened
@@ -134,23 +129,12 @@ class RPlugin {
 
     // Execute RAVE installation commands
     ipcMain.handle('plugin:r:executeRAVEInstall', wrapHandler(async (event, sessionId) => {
-      // Follow instructions from https://rave.wiki/posts/installation/installation.html
-      const installScript = `
-# RAVE Installation Script
-# Following https://rave.wiki/posts/installation/installation.html
-
-cat("\\n===== Step 1: Installing ravemanager =====\\n")
-install.packages('ravemanager', repos = 'https://rave-ieeg.r-universe.dev')
-
-cat("\\n===== Step 2: Running ravemanager::install() =====\\n")
-ravemanager::install()
-
-cat("\\nDone finalizing installations!\\n")
-cat("\\nINSTALLATION_COMPLETE\\n")
-`;
+      // Get install script from rave-installer
+      const installScript = this.installer.getInstallScript();
+      const timeout = this.installer.getInstallTimeout();
 
       try {
-        const result = await this.sessionManager.execute(sessionId, installScript, 600000); // 10 minute timeout
+        const result = await this.sessionManager.execute(sessionId, installScript, timeout);
         
         if (result.success && result.output.includes('INSTALLATION_COMPLETE')) {
           // Clean up session
@@ -170,6 +154,61 @@ cat("\\nINSTALLATION_COMPLETE\\n")
         this.sessionManager.terminateSession(sessionId);
         return { success: false, error: err.message };
       }
+    }));
+
+    // Check prerequisites before installation
+    ipcMain.handle('plugin:r:checkPrerequisites', wrapHandler(async (event, forceCheck) => {
+      const rPath = this.sessionManager.getRPath();
+      if (!rPath) {
+        return { 
+          success: false, 
+          error: 'R not detected',
+          passed: false,
+          issues: ['R is not installed or not detected'],
+          commands: [],
+          instructions: 'Please install R first. Visit https://cran.r-project.org/ to download R.',
+          platform: this.installer.platform
+        };
+      }
+
+      try {
+        // Step 1: Install/update ravemanager first (needed for Linux system_requirements)
+        console.log('Installing/updating ravemanager before prerequisite check...');
+        const ravemanagerResult = await this.installer.installRavemanager();
+        
+        if (!ravemanagerResult.success) {
+          console.warn('Failed to install ravemanager:', ravemanagerResult.error);
+          // Don't fail here, just warn - installation might still work
+        } else {
+          console.log('ravemanager version:', ravemanagerResult.version);
+        }
+
+        // Step 2: Check prerequisites
+        const prereqResult = await this.installer.checkPrerequisites(forceCheck);
+        
+        return {
+          success: true,
+          ...prereqResult,
+          ravemanagerVersion: ravemanagerResult.version
+        };
+      } catch (err) {
+        console.error('Prerequisite check failed:', err);
+        return {
+          success: false,
+          error: err.message,
+          passed: true, // Don't block installation on error
+          issues: [],
+          commands: [],
+          instructions: 'Could not verify prerequisites. Proceeding with installation.',
+          platform: this.installer.platform
+        };
+      }
+    }));
+
+    // Clear prerequisite cache
+    ipcMain.handle('plugin:r:clearPrerequisiteCache', wrapHandler(async () => {
+      this.installer.clearCache();
+      return { success: true };
     }));
   }
 

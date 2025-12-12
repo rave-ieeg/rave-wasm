@@ -60,6 +60,12 @@ contextBridge.exposeInMainWorld(
       // Execute RAVE installation commands
       executeRAVEInstall: (sessionId) => ipcRenderer.invoke('plugin:r:executeRAVEInstall', sessionId),
       
+      // Check prerequisites before installation (forceCheck bypasses cache)
+      checkPrerequisites: (forceCheck) => ipcRenderer.invoke('plugin:r:checkPrerequisites', forceCheck),
+      
+      // Clear prerequisite cache
+      clearPrerequisiteCache: () => ipcRenderer.invoke('plugin:r:clearPrerequisiteCache'),
+      
       // Listen for console output
       onConsoleOutput: (callback) => {
         ipcRenderer.on('plugin:r:consoleOutput', (event, data) => callback(data));
@@ -112,6 +118,9 @@ contextBridge.exposeInMainWorld(
       
       // Show alert dialog
       showAlert: (options) => ipcRenderer.invoke('plugin:launchpad:showAlert', options),
+      
+      // Open external URL in default browser
+      openExternal: (url) => ipcRenderer.invoke('plugin:launchpad:openExternal', url),
       
       // Listen for R status changes
       onRStatusChanged: (callback) => {

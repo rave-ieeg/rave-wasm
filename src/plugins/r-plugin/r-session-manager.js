@@ -27,19 +27,44 @@ function getIconPath() {
  * R Session Manager for managing multiple R sessions
  */
 class RSessionManager {
-  constructor(portManager) {
+  constructor(portManager, detector) {
     this.portManager = portManager;
+    this.detector = detector;
     this.sessions = new Map(); // sessionId -> { process, rPath, port, status, output }
     this.consoleOutputCallbacks = new Map(); // sessionId -> callback(data)
   }
 
   /**
+   * Get the current R path from detector
+   * Uses detector.rPath directly (synchronous property, set by detectR/setCustomPath)
+   * @returns {string|null}
+   */
+  getRPath() {
+    if (!this.detector) {
+      return null;
+    }
+    return this.detector.detected ? this.detector.rPath : null;
+  }
+
+  /**
    * Create a new R session
    * @param {string} sessionId - Unique session identifier
-   * @param {string} rPath - Path to R executable
+   * @param {string} rPath - Path to R executable (optional, uses detector if not provided)
+   * @param {Object} options - Session options
+   * @param {boolean} options.headless - If true, don't show UI dialogs (for background operations)
    * @returns {Promise<{success: boolean, port: number|null, error: string|null}>}
    */
-  async createSession(sessionId, rPath) {
+  async createSession(sessionId, rPath = null, options = {}) {
+    const { headless = false } = options;
+    
+    // Use detector rPath if not provided
+    if (!rPath) {
+      rPath = this.getRPath();
+      if (!rPath) {
+        return { success: false, port: null, error: 'R not detected' };
+      }
+    }
+    
     if (this.sessions.has(sessionId)) {
       return { success: false, port: null, error: 'Session already exists' };
     }
@@ -61,7 +86,8 @@ class RSessionManager {
         status: 'running',
         output: '',
         stderr: '',
-        pendingCommands: []
+        pendingCommands: [],
+        headless
       };
 
       // Handle stdout
@@ -94,8 +120,10 @@ class RSessionManager {
         console.log(`R Session ${sessionId} exited with code ${code}, signal ${signal}`);
         session.status = 'crashed';
         
-        // Show dialog to user
-        this._handleCrash(sessionId, code, signal);
+        // Show dialog to user (unless headless)
+        if (!session.headless) {
+          this._handleCrash(sessionId, code, signal);
+        }
       });
 
       // Handle process errors

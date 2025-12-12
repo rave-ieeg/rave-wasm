@@ -81,7 +81,8 @@ function setupLaunchpadIPC() {
         throw new Error('RAVE package not installed. Please install with: install.packages("rave")');
       }
       
-      const sessionResult = await rPlugin.sessionManager.createSession(sessionId, rStatus.path);
+      // Create session (sessionManager gets rPath from detector)
+      const sessionResult = await rPlugin.sessionManager.createSession(sessionId);
       if (!sessionResult.success) {
         throw new Error(sessionResult.error || 'Failed to create R session');
       }
@@ -226,6 +227,18 @@ function setupLaunchpadIPC() {
     
     return { success: true };
   }));
+
+  // Open external URL in default browser
+  ipcMain.handle('plugin:launchpad:openExternal', wrapHandler(async (event, url) => {
+    console.log('[DEBUG] openExternal - url:', url);
+    if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
+      const { shell } = require('electron');
+      await shell.openExternal(url);
+      return { success: true };
+    } else {
+      return { success: false, error: 'Invalid URL' };
+    }
+  }));
 }
 
 // Initialize application
@@ -238,13 +251,18 @@ async function initialize() {
     
     // Create and register plugins
     staticServerPlugin = new StaticServerPlugin();
-    rPlugin = new RPlugin(configManager, portManager);
     
     pluginManager.registerPlugin('static-server', staticServerPlugin);
-    pluginManager.registerPlugin('r-plugin', rPlugin);
     
-    // Initialize static server plugin
+    // Initialize static server plugin first (creates cacheManager)
     await pluginManager.initPlugin('static-server', __dirname);
+    
+    // Get cacheManager from static server plugin for use by r-plugin
+    const cacheManager = staticServerPlugin.getCacheManager();
+    
+    // Create r-plugin with access to cacheManager
+    rPlugin = new RPlugin(configManager, portManager, cacheManager);
+    pluginManager.registerPlugin('r-plugin', rPlugin);
     
     // Initialize R plugin
     await pluginManager.initPlugin('r-plugin');

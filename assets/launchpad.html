@@ -643,32 +643,117 @@
       }
     });
 
-    // Install RAVE packages
+    // Install RAVE packages with prerequisite checking
     btnInstallRave.addEventListener('click', async () => {
       console.log('[Install] Button clicked!');
-      const confirmResult = await launchpad.showConfirm({
-        type: 'question',
-        title: 'Install/Update RAVE Packages',
-        message: 'This will install/update RAVE packages following the instructions from rave.wiki.',
-        detail: 'All existing R sessions will be terminated.\n\nAn R console window will open showing the installation progress. This may take several minutes.\n\nContinue?',
-        buttons: ['Continue', 'Cancel'],
-        defaultId: 0,
-        cancelId: 1
-      });
-      console.log('[Install] Confirm dialog result:', confirmResult);
-      const response = confirmResult.data?.response ?? confirmResult.response;
-      if (response !== 0) {
-        console.log('[Install] User cancelled');
-        return;
-      }
       
-      console.log('[Install] Starting installation process...');
       btnInstallRave.disabled = true;
-      btnInstallRave.textContent = 'Preparing installation...';
+      btnInstallRave.textContent = 'Checking prerequisites...';
       
       try {
-        // Step 1: Create R session and get session ID
-        console.log('[Install] Step 1: Creating R session...');
+        // Step 0: Check prerequisites first (this also installs/updates ravemanager)
+        console.log('[Install] Step 0: Checking prerequisites...');
+        const prereqResult = await r.checkPrerequisites(false);
+        console.log('[Install] Prerequisite check result:', prereqResult);
+        
+        const prereqData = prereqResult.data || prereqResult;
+        
+        // If prerequisites check failed completely
+        if (!prereqResult.success && prereqData.error) {
+          await launchpad.showAlert({
+            type: 'error',
+            title: 'Prerequisite Check Failed',
+            message: prereqData.error,
+            detail: prereqData.instructions || ''
+          });
+          btnInstallRave.disabled = false;
+          btnInstallRave.textContent = 'Install RAVE Packages';
+          return;
+        }
+        
+        // If prerequisites are missing, show dialog with options
+        if (!prereqData.passed) {
+          console.log('[Install] Missing prerequisites detected');
+          
+          // Build issue summary (limit to 10 lines)
+          let issueDetails = prereqData.instructions || '';
+          const lines = issueDetails.split('\n');
+          if (lines.length > 15) {
+            issueDetails = lines.slice(0, 15).join('\n') + '\n\n... (see full instructions for more)';
+          }
+          
+          const prereqDialog = await launchpad.showConfirm({
+            type: 'warning',
+            title: 'Missing Prerequisites',
+            message: 'Some system prerequisites are missing. RAVE installation may fail.',
+            detail: issueDetails,
+            buttons: ['Install Anyway', 'Open Instructions', 'Ask for Help', 'Cancel'],
+            defaultId: 3,
+            cancelId: 3
+          });
+          
+          const prereqResponse = prereqDialog.data?.response ?? prereqDialog.response;
+          console.log('[Install] Prerequisite dialog response:', prereqResponse);
+          
+          if (prereqResponse === 1) {
+            // Open Instructions - go to rave.wiki
+            await launchpad.openExternal('https://rave.wiki/posts/installation/installation.html');
+            btnInstallRave.disabled = false;
+            const statusResult = await r.getStatus();
+            if (statusResult.success) {
+              updateRStatus(statusResult.data || statusResult);
+            }
+            return;
+          } else if (prereqResponse === 2) {
+            // Ask for Help - go to GitHub discussions
+            await launchpad.openExternal('https://github.com/orgs/rave-ieeg/discussions');
+            btnInstallRave.disabled = false;
+            const statusResult = await r.getStatus();
+            if (statusResult.success) {
+              updateRStatus(statusResult.data || statusResult);
+            }
+            return;
+          } else if (prereqResponse === 3) {
+            // Cancel
+            console.log('[Install] User cancelled due to prerequisites');
+            btnInstallRave.disabled = false;
+            const statusResult = await r.getStatus();
+            if (statusResult.success) {
+              updateRStatus(statusResult.data || statusResult);
+            }
+            return;
+          }
+          // prereqResponse === 0 means "Install Anyway" - continue
+          console.log('[Install] User chose to install anyway');
+        }
+        
+        // Step 1: Show confirmation dialog
+        btnInstallRave.textContent = 'Preparing installation...';
+        const confirmResult = await launchpad.showConfirm({
+          type: 'question',
+          title: 'Install/Update RAVE Packages',
+          message: 'This will install/update RAVE packages following the instructions from rave.wiki.',
+          detail: 'All existing R sessions will be terminated.\n\nAn R console window will open showing the installation progress. This may take several minutes.\n\nContinue?',
+          buttons: ['Continue', 'Cancel'],
+          defaultId: 0,
+          cancelId: 1
+        });
+        console.log('[Install] Confirm dialog result:', confirmResult);
+        const response = confirmResult.data?.response ?? confirmResult.response;
+        if (response !== 0) {
+          console.log('[Install] User cancelled');
+          btnInstallRave.disabled = false;
+          const statusResult = await r.getStatus();
+          if (statusResult.success) {
+            updateRStatus(statusResult.data || statusResult);
+          }
+          return;
+        }
+        
+        console.log('[Install] Starting installation process...');
+        
+        // Step 2: Create R session and get session ID
+        console.log('[Install] Step 2: Creating R session...');
         const result = await r.installRAVE();
         console.log('[Install] Install session result:', result);
         
@@ -694,9 +779,9 @@
         }
         
         const sessionId = result.data.sessionId;
-        console.log('[Install] Step 2: Opening R console window with sessionId:', sessionId);
+        console.log('[Install] Step 3: Opening R console window with sessionId:', sessionId);
         
-        // Step 2: Open R console window with session ID as query param
+        // Step 3: Open R console window with session ID as query param
         const consoleResult = await launchpad.openRConsole(sessionId);
         console.log('[Install] R console window result:', consoleResult);
         
