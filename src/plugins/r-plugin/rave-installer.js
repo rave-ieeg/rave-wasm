@@ -274,7 +274,6 @@ class RAVEInstaller {
     }
 
     // Execute command
-    // SUDO_ASKPASS is always set up - if command needs sudo, helper will prompt
     const executeResult = await this.shellSessionManager.execute(sessionId, step.run, {
       env: step.env || {},
       timeout: step.timeout || 1800000, // Default 30 minutes
