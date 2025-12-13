@@ -9,7 +9,15 @@ steps:
     name: R Programming Language
     type: shell
     if: |
-      (reg query "HKLM\Software\R-core\R" /v "Current Version" 2>nul || reg query "HKCU\Software\R-core\R" /v "Current Version" 2>nul) >nul && for /f "tokens=3" %v in ('reg query "HKLM\Software\R-core\R" /v "Current Version" 2^>nul ^| findstr "Current Version"') do @if "%v" geq "4.3.0" exit 0 || for /f "tokens=3" %v in ('reg query "HKCU\Software\R-core\R" /v "Current Version" 2^>nul ^| findstr "Current Version"') do @if "%v" geq "4.3.0" exit 0
+      set HKLM_KEY=HKLM\Software\R-core\R
+      set HKCU_KEY=HKCU\Software\R-core\R
+      set MIN_VERSION=4.3.0
+      
+      (reg query "%HKLM_KEY%" /v "Current Version" 2>nul || reg query "%HKCU_KEY%" /v "Current Version" 2>nul) >nul && (
+        for /f "tokens=3" %%v in ('reg query "%HKLM_KEY%" /v "Current Version" 2^>nul ^| findstr "Current Version"') do @if "%%v" geq "%MIN_VERSION%" exit 0
+      ) || (
+        for /f "tokens=3" %%v in ('reg query "%HKCU_KEY%" /v "Current Version" 2^>nul ^| findstr "Current Version"') do @if "%%v" geq "%MIN_VERSION%" exit 0
+      )
     run: echo "Please download and install R from https://cran.r-project.org/bin/windows/base/"
     required: true
     manualExecute: true
