@@ -191,7 +191,7 @@ function setupLaunchpadIPC() {
   // Open installation console window (new unified installation UI)
   ipcMain.handle('plugin:launchpad:openInstallationConsole', wrapHandler(async (event) => {
     const port = staticServerPlugin.getPort();
-    const window = windowManager.createInstallationConsoleWindow(__dirname, port);
+    const window = windowManager.createInstallationConsoleWindow(__dirname, port, rPlugin);
     
     return { success: true };
   }));

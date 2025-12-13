@@ -236,9 +236,10 @@ class WindowManager {
    * Create installation console window with unified checklist UI
    * @param {string} basePath - Application base path
    * @param {number} port - Server port
+   * @param {Object} rPlugin - RPlugin instance for aborting installation
    * @returns {BrowserWindow} - The installation console window
    */
-  createInstallationConsoleWindow(basePath, port) {
+  createInstallationConsoleWindow(basePath, port, rPlugin) {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
     const iconPath = this._findIconPath(basePath);
     
@@ -264,12 +265,23 @@ class WindowManager {
       window: installWindow,
       port,
       sessionId: installId,
-      type: 'installation-console'
+      type: 'installation-console',
+      rPlugin
     });
 
     // Cleanup on close
-    installWindow.on('closed', () => {
+    installWindow.on('closed', async () => {
+      const windowData = this.appWindows.get(installId);
       this.appWindows.delete(installId);
+      
+      // Abort any ongoing installation when window is closed
+      if (windowData && windowData.rPlugin && windowData.rPlugin.installer) {
+        console.log('[WindowManager] Installation console closed - aborting installation');
+        windowData.rPlugin.installer.abort();
+        
+        // Wait a moment for processes to be killed and sessions cleaned up
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       
       // Notify all launchpad windows that installation console closed
       this.appWindows.forEach(({ window, type }) => {

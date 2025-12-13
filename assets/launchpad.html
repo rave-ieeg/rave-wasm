@@ -389,7 +389,7 @@
         Set R Path Manually
       </button>
       <button class="launch-btn btn-link" id="btn-install-rave">
-        Install/Update RAVE Packages
+        Install RAVE Packages
       </button>
       <button class="launch-btn btn-link" id="btn-manage-cache">
         Manage Cache
@@ -704,12 +704,15 @@
     
     // Listen for installation console window close event
     window.electronAPI.onInstallationConsoleClosed(() => {
-      console.log('[Launchpad] Installation console closed - re-enabling button');
+      console.log('[Launchpad] Installation console closed event received');
+      console.log('[Launchpad] Current button state - disabled:', btnInstallRave.disabled, 'text:', btnInstallRave.textContent);
       btnInstallRave.disabled = false;
+      console.log('[Launchpad] Button re-enabled');
       
       // Refresh RAVE status to update button text
       r.getStatus().then(result => {
         if (result.success) {
+          console.log('[Launchpad] Updating R status after installation');
           updateRStatus(result.data || result);
         }
       }).catch(err => {

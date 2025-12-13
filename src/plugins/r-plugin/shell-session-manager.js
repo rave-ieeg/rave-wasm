@@ -49,6 +49,7 @@ class ShellSessionManager {
    * @param {Object} options - Execution options
    * @param {Object} options.env - Environment variables
    * @param {number} options.timeout - Timeout in milliseconds (default: 30 minutes)
+   * @param {Object} options.step - Step object containing manualExecute flag
    * @returns {Promise<{success: boolean, output: string, error: string|null}>}
    */
   async execute(sessionId, command, options = {}) {
@@ -72,10 +73,10 @@ class ShellSessionManager {
     const isMacOS = process.platform === 'darwin';
     const isShellCommand = session.type === 'shell';
     
-    // Check if command requires sudo (brew cask installations)
-    const requiresSudo = command.includes('brew install --cask') || 
-                         command.includes('brew reinstall --cask') ||
-                         command.includes('/bin/bash -c "$(curl');
+    // Check if step requires manual execution (from YAML config manualExecute flag)
+    const requiresSudo = options.step && options.step.manualExecute === true;
+    
+    console.log(`[ShellSessionManager] Execute check - step.id: ${options.step?.id}, manualExecute: ${options.step?.manualExecute}, requiresSudo: ${requiresSudo}`);
     
     if (isMacOS && isShellCommand && requiresSudo) {
       // For macOS shell commands that require sudo, create a setup script for environment variables
@@ -288,31 +289,55 @@ class ShellSessionManager {
 
       // Handle process completion
       proc.on('close', (code) => {
-        session.status = 'ready';
-        session.process = null;
+        // Check if session still exists (might have been terminated)
+        const currentSession = this.sessions.get(sessionId);
+        if (!currentSession) {
+          console.log(`[ShellSessionManager] ${sessionId} finished with code ${code} (session already terminated)`);
+          resolve({
+            success: false,
+            output: '',
+            error: 'Session terminated'
+          });
+          return;
+        }
+
+        currentSession.status = 'ready';
+        currentSession.process = null;
 
         const success = code === 0;
-        const error = success ? null : (session.stderr || `Command failed with exit code ${code}`);
+        const error = success ? null : (currentSession.stderr || `Command failed with exit code ${code}`);
 
         console.log(`[ShellSessionManager] ${sessionId} finished with code ${code}`);
 
         resolve({
           success,
-          output: session.output,
+          output: currentSession.output,
           error
         });
       });
 
       // Handle process errors
       proc.on('error', (err) => {
-        session.status = 'crashed';
-        session.process = null;
+        // Check if session still exists (might have been terminated)
+        const currentSession = this.sessions.get(sessionId);
+        if (!currentSession) {
+          console.error(`[ShellSessionManager] ${sessionId} error (session already terminated):`, err);
+          resolve({
+            success: false,
+            output: '',
+            error: 'Session terminated'
+          });
+          return;
+        }
+
+        currentSession.status = 'crashed';
+        currentSession.process = null;
 
         console.error(`[ShellSessionManager] ${sessionId} error:`, err);
 
         resolve({
           success: false,
-          output: session.output,
+          output: currentSession.output,
           error: err.message
         });
       });
@@ -403,6 +428,13 @@ class ShellSessionManager {
     if (!session) {
       console.warn(`[ShellSessionManager] Cannot terminate - session not found: ${sessionId}`);
       return;
+    }
+
+    // Resolve any pending command prompt with 'failed' response
+    if (session.commandPromptResolve) {
+      console.log(`[ShellSessionManager] Resolving pending command prompt for ${sessionId} with 'failed'`);
+      session.commandPromptResolve('failed');
+      delete session.commandPromptResolve;
     }
 
     // Kill process if running

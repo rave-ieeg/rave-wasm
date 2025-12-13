@@ -19,6 +19,10 @@ if(debug && dipsaus::rs_avail() && !is.na(dipsaus::rs_active_project())) {
 use_cache <- identical(Sys.getenv("RAVE_WASM_CACHE", unset = ifelse(debug, "TRUE", "FALSE")), "TRUE")
 base_url <- Sys.getenv("RAVE_WASM_BASE_URL", unset = ifelse(debug, "http://127.0.0.1:8000", "https://rave.wiki/rave-wasm"))
 
+if(system.file(package = "shinylive") == "") {
+  pak::pak("posit-dev/r-shinylive")
+} # ensure shinylive is loaded
+
 # ---- Step 1: download shinylive assets ---------------------------------------
 # Make sure the version is the latest to be in consistent with the latest R version
 # pak::pak("posit-dev/r-shinylive")

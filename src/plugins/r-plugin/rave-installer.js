@@ -277,11 +277,15 @@ class RAVEInstaller {
     // SUDO_ASKPASS is always set up - if command needs sudo, helper will prompt
     const executeResult = await this.shellSessionManager.execute(sessionId, step.run, {
       env: step.env || {},
-      timeout: step.timeout || 1800000 // Default 30 minutes
+      timeout: step.timeout || 1800000, // Default 30 minutes
+      step: step // Pass step object so execute can check manualExecute flag
     });
 
-    // Cleanup
-    this.shellSessionManager.terminateSession(sessionId);
+    // Cleanup - only if session still exists (might have been terminated by abort)
+    const session = this.shellSessionManager.sessions.get(sessionId);
+    if (session) {
+      this.shellSessionManager.terminateSession(sessionId);
+    }
     this.currentStep = null;
 
     const status = executeResult.success ? 'success' : 'failed';
@@ -455,6 +459,12 @@ class RAVEInstaller {
           completed++;
         } else {
           failed++;
+          
+          // Check if installation was aborted before processing failure
+          if (this._aborted) {
+            console.log('[RAVEInstaller] Installation aborted - skipping failure handling');
+            break;
+          }
           
           // If required step failed, wait for user decision
           if (step.required) {

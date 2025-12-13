@@ -25,6 +25,7 @@ steps:
     run: |
       /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     required: true
+    manualExecute: true
     timeout: 300000  # 5 minutes
     description: Homebrew is required to install R and system dependencies
     manualInstructions: |
@@ -59,6 +60,7 @@ steps:
         echo "R is already installed"
       fi
     required: true
+    manualExecute: true
     needs: [homebrew]
     timeout: 600000  # 10 minutes
     description: R is required to run RAVE
@@ -78,7 +80,6 @@ steps:
     type: shell
     if: brew list hdf5 && brew list fftw && brew list pkg-config && brew list cmake && brew list libpng
     run: |
-      # Set up brew environment based on CPU architecture
       if [ "$(uname -m)" = "arm64" ]; then
         # ARM Mac (Apple Silicon)
         [ -f /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -88,6 +89,7 @@ steps:
       fi
       brew install hdf5 fftw pkg-config cmake libpng
     required: true
+    manualExecute: false
     needs: [homebrew]
     timeout: 900000  # 15 minutes
     description: System libraries required for RAVE's signal processing features
@@ -106,7 +108,6 @@ steps:
     type: shell
     if: test -d /Applications/RStudio.app || test -d /Applications/Posit/RStudio.app
     run: |
-      # Set up brew environment based on CPU architecture
       if [ "$(uname -m)" = "arm64" ]; then
         # ARM Mac (Apple Silicon)
         [ -f /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
@@ -116,6 +117,7 @@ steps:
       fi
       brew install --cask rstudio
     required: false
+    manualExecute: false
     needs: [homebrew, r-language]
     timeout: 600000  # 10 minutes
     description: RStudio is recommended for R development but not required for RAVE
@@ -136,6 +138,7 @@ steps:
       ravemanager::install()
       cat("\nINSTALLATION_COMPLETE\n")
     required: true
+    manualExecute: false
     needs: [r-language, system-libraries]
     timeout: 1800000  # 30 minutes
     description: RAVE packages for electrophysiology data analysis
