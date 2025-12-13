@@ -9,15 +9,41 @@ steps:
     name: R Programming Language
     type: shell
     if: |
-      set HKLM_KEY=HKLM\Software\R-core\R
-      set HKCU_KEY=HKCU\Software\R-core\R
-      set MIN_VERSION=4.3.0
+      @echo off
+      setlocal enabledelayedexpansion
       
-      (reg query "%HKLM_KEY%" /v "Current Version" 2>nul || reg query "%HKCU_KEY%" /v "Current Version" 2>nul) >nul && (
-        for /f "tokens=3" %%v in ('reg query "%HKLM_KEY%" /v "Current Version" 2^>nul ^| findstr "Current Version"') do @if "%%v" geq "%MIN_VERSION%" exit 0
-      ) || (
-        for /f "tokens=3" %%v in ('reg query "%HKCU_KEY%" /v "Current Version" 2^>nul ^| findstr "Current Version"') do @if "%%v" geq "%MIN_VERSION%" exit 0
+      REM Check RSTUDIO_WHICH_R environment variable first
+      if defined RSTUDIO_WHICH_R (
+        if exist "%RSTUDIO_WHICH_R%" exit /b 0
       )
+      
+      REM Check registry for R installations (64-bit first, then 32-bit)
+      for %%K in (HKCU HKLM) do (
+        for %%V in (R64 R) do (
+          REM Enumerate version subkeys under R-core\R or R-core\R64
+          for /f "delims=" %%S in ('reg query "%%K\Software\R-core\%%V" 2^>nul ^| findstr "\\R-core\\%%V\\"') do (
+            REM Query InstallPath from the version subkey
+            for /f "tokens=2*" %%a in ('reg query "%%S" /v "InstallPath" 2^>nul ^| findstr "InstallPath"') do (
+              if exist "%%b\bin\x64\R.exe" exit /b 0
+              if exist "%%b\bin\i386\R.exe" exit /b 0
+              if exist "%%b\bin\R.exe" exit /b 0
+            )
+          )
+        )
+      )
+      
+      REM Check common installation locations
+      for %%D in ("C:\R" "%ProgramFiles%\R" "%ProgramFiles(x86)%\R" "%LOCALAPPDATA%\Programs\R") do (
+        if exist "%%~D" (
+          for /d %%R in ("%%~D\R-*") do (
+            if exist "%%R\bin\x64\R.exe" exit /b 0
+            if exist "%%R\bin\i386\R.exe" exit /b 0
+            if exist "%%R\bin\R.exe" exit /b 0
+          )
+        )
+      )
+      
+      exit /b 1
     run: echo "Please download and install R from https://cran.r-project.org/bin/windows/base/"
     required: true
     manualExecute: true
