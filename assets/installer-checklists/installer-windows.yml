@@ -8,9 +8,11 @@ steps:
   - id: r-language
     name: R Programming Language
     type: shell
-    if: R --version
+    if: |
+      (reg query "HKLM\Software\R-core\R" /v "Current Version" 2>nul || reg query "HKCU\Software\R-core\R" /v "Current Version" 2>nul) >nul && for /f "tokens=3" %v in ('reg query "HKLM\Software\R-core\R" /v "Current Version" 2^>nul ^| findstr "Current Version"') do @if "%v" geq "4.3.0" exit 0 || for /f "tokens=3" %v in ('reg query "HKCU\Software\R-core\R" /v "Current Version" 2^>nul ^| findstr "Current Version"') do @if "%v" geq "4.3.0" exit 0
     run: echo "Please download and install R from https://cran.r-project.org/bin/windows/base/"
     required: true
+    manualExecute: true
     timeout: 300000  # 5 minutes
     description: R is required to run RAVE
     manualInstructions: |
@@ -19,13 +21,32 @@ steps:
       
       Follow the installer prompts with default options.
 
+  # Step 1.5: Install pkgbuild package (for Rtools detection)
+  - id: pkgbuild
+    name: R Package 'pkgbuild'
+    type: rscript
+    run: |
+      if (!require('pkgbuild', quietly = TRUE)) {
+        install.packages('pkgbuild', repos = 'https://cloud.r-project.org')
+      }
+      cat("\npkgbuild package installed\n")
+    required: true
+    manualExecute: false
+    needs: [r-language]
+    timeout: 300000  # 5 minutes
+    description: Install pkgbuild package to detect Rtools availability
+    manualInstructions: |
+      Open R or RStudio and run:
+      install.packages('pkgbuild')
+
   # Step 2: Check and install Rtools
   - id: rtools
     name: Rtools for Windows
     type: shell
-    if: where gcc | findstr Rtools
+    if: Rscript -e "pkgbuild::has_build_tools()" 2>nul | findstr TRUE
     run: echo "Please download and install Rtools from https://cran.r-project.org/bin/windows/Rtools/"
     required: true
+    manualExecute: true
     timeout: 300000  # 5 minutes
     description: Rtools is required to compile R packages from source
     manualInstructions: |
@@ -43,6 +64,7 @@ steps:
     if: test -f "C:\Program Files\RStudio\rstudio.exe"
     run: echo "Please download and install RStudio from https://posit.co/download/rstudio-desktop/"
     required: false
+    manualExecute: true
     timeout: 300000  # 5 minutes
     description: RStudio is recommended for R development but not required for RAVE
     manualInstructions: |
@@ -61,7 +83,8 @@ steps:
       ravemanager::install()
       cat("\nINSTALLATION_COMPLETE\n")
     required: true
-    needs: [r-language, rtools]
+    manualExecute: false
+    needs: [r-language, pkgbuild, rtools]
     timeout: 1800000  # 30 minutes
     description: RAVE packages for electrophysiology data analysis
     manualInstructions: |

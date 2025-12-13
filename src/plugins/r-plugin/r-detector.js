@@ -15,19 +15,99 @@ class RDetector {
   }
 
   /**
-   * Read R path from Windows Registry
+   * Query registry for R version
+   * @param {string} registryKey - Registry key to query (e.g., 'HKLM\\Software\\R-core\\R')
+   * @returns {Promise<string|null>} - Version number or null
+   */
+  async _queryCurrentVersion(registryKey) {
+    return new Promise((resolve) => {
+      const regQuery = spawn('reg', [
+        'query',
+        registryKey,
+        '/v',
+        'Current Version'
+      ], { windowsHide: true });
+
+      let output = '';
+      regQuery.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      regQuery.on('close', () => {
+        // Parse version from registry output
+        const match = output.match(/Current Version\s+REG_SZ\s+(.+)/);
+        resolve(match ? match[1].trim() : null);
+      });
+
+      regQuery.on('error', () => {
+        resolve(null);
+      });
+
+      setTimeout(() => {
+        regQuery.kill();
+        resolve(null);
+      }, 3000);
+    });
+  }
+
+  /**
+   * Query registry for R installation path by version
+   * @param {string} registryKey - Base registry key (e.g., 'HKLM\\Software\\R-core\\R')
+   * @param {string} version - R version number (e.g., '4.5.2')
    * @returns {Promise<string[]>}
    */
-  async _getWindowsRegistryPaths() {
-    if (process.platform !== 'win32') return [];
-    
+  async _queryInstallPath(registryKey, version) {
+    return new Promise((resolve) => {
+      const paths = [];
+      const versionKey = `${registryKey}\\${version}`;
+      
+      const regQuery = spawn('reg', [
+        'query',
+        versionKey,
+        '/v',
+        'InstallPath'
+      ], { windowsHide: true });
+
+      let output = '';
+      regQuery.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      regQuery.on('close', () => {
+        // Parse install path from registry output
+        const match = output.match(/InstallPath\s+REG_SZ\s+(.+)/);
+        if (match) {
+          const installPath = match[1].trim();
+          // Try x64 first (only architecture since R 4.2), then fallback
+          paths.push(path.join(installPath, 'bin', 'x64', 'R.exe'));
+          paths.push(path.join(installPath, 'bin', 'R.exe'));
+        }
+        resolve(paths);
+      });
+
+      regQuery.on('error', () => {
+        resolve([]);
+      });
+
+      setTimeout(() => {
+        regQuery.kill();
+        resolve([]);
+      }, 3000);
+    });
+  }
+
+  /**
+   * Query a specific registry key for all R installation paths
+   * @param {string} registryKey - Registry key to query (e.g., 'HKLM\\Software\\R-core\\R')
+   * @returns {Promise<string[]>}
+   */
+  async _queryRegistryKey(registryKey) {
     return new Promise((resolve) => {
       const paths = [];
       
-      // Query registry for R installation path
       const regQuery = spawn('reg', [
         'query',
-        'HKLM\\Software\\R-core\\R',
+        registryKey,
         '/s',
         '/v',
         'InstallPath'
@@ -59,6 +139,47 @@ class RDetector {
         resolve([]);
       }, 3000);
     });
+  }
+
+  /**
+   * Read R path from Windows Registry
+   * Queries both HKLM (system-wide installs) and HKCU (user-level installs)
+   * First tries to use 'Current Version' key, then falls back to searching all versions
+   * @returns {Promise<string[]>}
+   */
+  async _getWindowsRegistryPaths() {
+    if (process.platform !== 'win32') return [];
+    
+    const paths = [];
+    
+    // Query both HKLM (admin installs) and HKCU (user installs)
+    // Reference: https://cran.r-project.org/bin/windows/base/rw-FAQ.html#Does-R-use-the-Registry_003f
+    const registryKeys = [
+      'HKLM\\Software\\R-core\\R',
+      'HKCU\\Software\\R-core\\R'
+    ];
+    
+    // Try to get the current version first (most reliable)
+    for (const registryKey of registryKeys) {
+      const version = await this._queryCurrentVersion(registryKey);
+      if (version) {
+        const versionPaths = await this._queryInstallPath(registryKey, version);
+        paths.push(...versionPaths);
+      }
+    }
+    
+    // If no current version found, search all versions
+    if (paths.length === 0) {
+      const results = await Promise.all(
+        registryKeys.map(key => this._queryRegistryKey(key))
+      );
+      
+      for (const result of results) {
+        paths.push(...result);
+      }
+    }
+    
+    return paths;
   }
 
   /**
