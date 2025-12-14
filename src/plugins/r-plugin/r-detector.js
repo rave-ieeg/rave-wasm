@@ -413,25 +413,29 @@ class RDetector {
 
     return new Promise((resolve) => {
       const rCode = `
-if(require('rave', quietly=TRUE)) {
-  cat('RAVE:', as.character(packageVersion('rave')), '\\n')
-}
-if(require('ravemanager', quietly=TRUE)) {
-  cat('RAVEMANAGER:', as.character(packageVersion('ravemanager')), '\\n')
-}
+tryCatch({
+  if(requireNamespace('rave', quietly=TRUE)) {
+    cat('RAVE:', as.character(utils::packageVersion('rave')), '\\n', sep='')
+  }
+}, error=function(e){})
+tryCatch({
+  if(requireNamespace('ravemanager', quietly=TRUE)) {
+    cat('RAVEMANAGER:', as.character(utils::packageVersion('ravemanager')), '\\n', sep='')
+  }
+}, error=function(e){})
 `;
 
       // On Windows, use Rscript.exe instead of R.exe for non-interactive execution
       // R.exe requires console attachment which causes crashes when spawned from Node.js
-      // On other platforms, use R with -q flag to suppress startup messages
+      // On other platforms, use R with --slave to suppress startup messages and echo
       let rExecutable = rPath;
-      let args = ['-e', rCode];
+      let args = ['--slave', '--vanilla', '-e', rCode];
       
       if (process.platform === 'win32' && rPath.match(/R\.exe$/i)) {
         rExecutable = rPath.replace(/R\.exe$/i, 'Rscript.exe');
       } else {
-        // Unix-like systems: use -q flag with R
-        args = ['-q', '-e', rCode];
+        // Unix-like systems: use --slave to suppress startup messages and echo
+        args = ['--slave', '--vanilla', '-e', rCode];
       }
 
       const r = spawn(rExecutable, args, {
