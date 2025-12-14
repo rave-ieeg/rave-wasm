@@ -99,7 +99,27 @@ class RAVEInstaller {
     console.log(`[RAVEInstaller] Evaluating condition for ${step.id}: ${step.if}`);
 
     return new Promise((resolve) => {
-      const proc = spawn('sh', ['-c', step.if], { windowsHide: true });
+      // Use appropriate shell for platform
+      const isWindows = process.platform === 'win32';
+      let proc;
+      let tempBatchPath = null;
+
+      if (isWindows) {
+        // Handle multi-line commands on Windows using a temporary batch file
+        try {
+          const os = require('os');
+          const tempDir = os.tmpdir();
+          tempBatchPath = path.join(tempDir, `rave-condition-${step.id}-${Date.now()}.bat`);
+          fs.writeFileSync(tempBatchPath, step.if);
+          proc = spawn('cmd.exe', ['/c', tempBatchPath], { windowsHide: true });
+        } catch (err) {
+          console.error('[RAVEInstaller] Failed to create temp batch file for condition:', err);
+          // Fallback to direct execution (likely to fail for multi-line)
+          proc = spawn('cmd.exe', ['/c', step.if], { windowsHide: true });
+        }
+      } else {
+        proc = spawn('sh', ['-c', step.if], { windowsHide: true });
+      }
       
       let output = '';
       
@@ -112,6 +132,17 @@ class RAVEInstaller {
       });
       
       proc.on('close', (code) => {
+        // Cleanup temp batch file
+        if (tempBatchPath) {
+          try {
+            if (fs.existsSync(tempBatchPath)) {
+              fs.unlinkSync(tempBatchPath);
+            }
+          } catch (err) {
+            console.warn('[RAVEInstaller] Failed to cleanup temp batch file:', err);
+          }
+        }
+
         const canSkip = code === 0;
         console.log(`[RAVEInstaller] Condition for ${step.id}: ${canSkip ? 'SKIP' : 'EXECUTE'} (exit code: ${code})`);
         resolve({ canSkip, output: output.trim() });
@@ -124,7 +155,9 @@ class RAVEInstaller {
       
       // 10 second timeout for condition checks
       setTimeout(() => {
-        proc.kill();
+        if (proc && !proc.killed) {
+            proc.kill();
+        }
         resolve({ canSkip: false, output: 'Condition check timeout' });
       }, 10000);
     });
@@ -244,7 +277,13 @@ class RAVEInstaller {
 
     const sessionId = `install-${step.id}-${Date.now()}`;
     const sessionType = step.type === 'rscript' ? 'rscript' : 'shell';
-    const rPath = this.sessionManager?.getRPath() || 'Rscript';
+    let rPath = this.sessionManager?.getRPath() || 'Rscript';
+
+    // On Windows, convert R.exe to Rscript.exe for rscript sessions
+    // Rscript.exe supports multiline commands while R.exe -e requires single line
+    if (sessionType === 'rscript' && process.platform === 'win32' && rPath.match(/R\.exe$/i)) {
+      rPath = rPath.replace(/R\.exe$/i, 'Rscript.exe');
+    }
 
     // Create session
     const sessionResult = this.shellSessionManager.createSession(sessionId, {

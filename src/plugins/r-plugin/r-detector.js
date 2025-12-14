@@ -143,8 +143,9 @@ class RDetector {
 
   /**
    * Read R path from Windows Registry
-   * Queries both HKLM (system-wide installs) and HKCU (user-level installs)
-   * First tries to use 'Current Version' key, then falls back to searching all versions
+   * Queries both HKCU (user-level installs) and HKLM (system-wide installs)
+   * Priority: HKCU\R, HKCU\R64, HKLM\R, HKLM\R64
+   * User installs are prioritized as they suggest limited admin access
    * @returns {Promise<string[]>}
    */
   async _getWindowsRegistryPaths() {
@@ -152,30 +153,25 @@ class RDetector {
     
     const paths = [];
     
-    // Query both HKLM (admin installs) and HKCU (user installs)
+    // Query both HKCU (user installs) and HKLM (admin installs)
+    // Priority: HKCU over HKLM (user installs suggest limited admin access)
+    // Priority: R over R64 (R 4.3.0+ uses R-core\R)
     // Reference: https://cran.r-project.org/bin/windows/base/rw-FAQ.html#Does-R-use-the-Registry_003f
     const registryKeys = [
+      'HKCU\\Software\\R-core\\R',
+      'HKCU\\Software\\R-core\\R64',
       'HKLM\\Software\\R-core\\R',
-      'HKCU\\Software\\R-core\\R'
+      'HKLM\\Software\\R-core\\R64'
     ];
     
-    // Try to get the current version first (most reliable)
+    // Search all registry keys in priority order
     for (const registryKey of registryKeys) {
-      const version = await this._queryCurrentVersion(registryKey);
-      if (version) {
-        const versionPaths = await this._queryInstallPath(registryKey, version);
-        paths.push(...versionPaths);
-      }
-    }
-    
-    // If no current version found, search all versions
-    if (paths.length === 0) {
-      const results = await Promise.all(
-        registryKeys.map(key => this._queryRegistryKey(key))
-      );
-      
-      for (const result of results) {
-        paths.push(...result);
+      const keyPaths = await this._queryRegistryKey(registryKey);
+      if (keyPaths.length > 0) {
+        paths.push(...keyPaths);
+        // Return immediately after finding first valid registry key
+        // This ensures we respect the priority order
+        break;
       }
     }
     
@@ -203,11 +199,45 @@ class RDetector {
       paths.push('/usr/local/bin/R');
       paths.push('/opt/R/bin/R');
     } else if (platform === 'win32') {
-      // 1. Try Windows Registry first (most reliable)
+      // 1. Check RSTUDIO_WHICH_R environment variable first
+      if (process.env.RSTUDIO_WHICH_R && fs.existsSync(process.env.RSTUDIO_WHICH_R)) {
+        paths.push(process.env.RSTUDIO_WHICH_R);
+      }
+
+      // 2. Try Windows Registry (most reliable for R 4.3.0+)
+      // Priority: HKCU\R, HKCU\R64, HKLM\R, HKLM\R64
       const registryPaths = await this._getWindowsRegistryPaths();
       paths.push(...registryPaths);
 
-      // 2. Check environment variables (PATH and ORIGINAL_PATH)
+      // 3. Check common installation directories as fallback
+      // Priority: user local, then system-wide
+      const commonDirs = [
+        path.join(process.env.LOCALAPPDATA || '', 'Programs', 'R'),
+        path.join(process.env.ProgramFiles || 'C:\\Program Files', 'R'),
+        'C:\\R',
+        path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'R')
+      ].filter(dir => dir && fs.existsSync(dir));
+
+      for (const rBase of commonDirs) {
+        try {
+          const versions = fs.readdirSync(rBase)
+            .filter(v => v.startsWith('R-'))
+            .sort()
+            .reverse(); // Get newest first
+          
+          for (const version of versions) {
+            const versionPath = path.join(rBase, version);
+            // Try x64 first (standard for R 4.2+), then fallback to bin, then i386
+            paths.push(path.join(versionPath, 'bin', 'x64', 'R.exe'));
+            paths.push(path.join(versionPath, 'bin', 'R.exe'));
+            paths.push(path.join(versionPath, 'bin', 'i386', 'R.exe'));
+          }
+        } catch (err) {
+          // Ignore errors reading directory
+        }
+      }
+
+      // 4. Check PATH environment variables (least reliable)
       const pathsToCheck = [
         process.env.PATH,
         process.env.ORIGINAL_PATH,
@@ -218,42 +248,7 @@ class RDetector {
         const pathDirs = pathEnv.split(path.delimiter);
         for (const dir of pathDirs) {
           const rExe = path.join(dir, 'R.exe');
-          const rscriptExe = path.join(dir, 'Rscript.exe');
           if (fs.existsSync(rExe)) paths.push(rExe);
-          if (fs.existsSync(rscriptExe)) paths.push(rscriptExe);
-        }
-      }
-
-      // 3. Check common installation directories
-      const programFiles = [
-        process.env.ProgramFiles,
-        process.env['ProgramFiles(x86)'],
-        'C:\\Program Files',
-        'C:\\Program Files (x86)'
-      ].filter(Boolean);
-
-      // Remove duplicates
-      const uniqueProgramFiles = [...new Set(programFiles)];
-
-      for (const pf of uniqueProgramFiles) {
-        const rBase = path.join(pf, 'R');
-        if (fs.existsSync(rBase)) {
-          try {
-            const versions = fs.readdirSync(rBase).sort().reverse(); // Get newest first
-            for (const version of versions) {
-              if (version.startsWith('R-')) {
-                // Try x64 first, then i386, then default bin
-                paths.push(path.join(rBase, version, 'bin', 'x64', 'R.exe'));
-                paths.push(path.join(rBase, version, 'bin', 'i386', 'R.exe'));
-                paths.push(path.join(rBase, version, 'bin', 'R.exe'));
-                paths.push(path.join(rBase, version, 'bin', 'x64', 'Rscript.exe'));
-                paths.push(path.join(rBase, version, 'bin', 'i386', 'Rscript.exe'));
-                paths.push(path.join(rBase, version, 'bin', 'Rscript.exe'));
-              }
-            }
-          } catch (err) {
-            // Ignore errors reading directory
-          }
         }
       }
     }
@@ -280,7 +275,13 @@ class RDetector {
       });
 
       let output = '';
+      
+      // R sends version info to stdout on Unix, stderr on Windows
       r.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      r.stderr.on('data', (data) => {
         output += data.toString();
       });
 
@@ -420,7 +421,20 @@ if(require('ravemanager', quietly=TRUE)) {
 }
 `;
 
-      const r = spawn(rPath, ['--slave', '--vanilla', '-e', rCode], {
+      // On Windows, use Rscript.exe instead of R.exe for non-interactive execution
+      // R.exe requires console attachment which causes crashes when spawned from Node.js
+      // On other platforms, use R with -q flag to suppress startup messages
+      let rExecutable = rPath;
+      let args = ['-e', rCode];
+      
+      if (process.platform === 'win32' && rPath.match(/R\.exe$/i)) {
+        rExecutable = rPath.replace(/R\.exe$/i, 'Rscript.exe');
+      } else {
+        // Unix-like systems: use -q flag with R
+        args = ['-q', '-e', rCode];
+      }
+
+      const r = spawn(rExecutable, args, {
         windowsHide: true
       });
 

@@ -235,15 +235,32 @@ class ShellSessionManager {
       let cmdToRun = command;
       let args = [];
       let executable = 'sh';
+      let tempBatchPath = null;
 
       if (session.type === 'rscript') {
         // For Rscript, use Rscript executable
         executable = session.rPath;
         args = ['--quiet', '-e', command];
       } else {
-        // For shell commands
-        executable = 'sh';
-        args = ['-c', cmdToRun];
+        // For shell commands, use platform-appropriate shell
+        if (process.platform === 'win32') {
+          // Windows: Write to temporary batch file to support multi-line commands
+          try {
+            const tempDir = os.tmpdir();
+            tempBatchPath = path.join(tempDir, `rave-shell-${sessionId}-${Date.now()}.bat`);
+            fs.writeFileSync(tempBatchPath, cmdToRun);
+            executable = 'cmd.exe';
+            args = ['/c', tempBatchPath];
+          } catch (err) {
+            console.error('[ShellSessionManager] Failed to create temp batch file:', err);
+            // Fallback to direct execution (might fail for multi-line)
+            executable = 'cmd.exe';
+            args = ['/c', cmdToRun];
+          }
+        } else {
+          executable = 'sh';
+          args = ['-c', cmdToRun];
+        }
       }
 
       const proc = spawn(executable, args, {
@@ -289,6 +306,17 @@ class ShellSessionManager {
 
       // Handle process completion
       proc.on('close', (code) => {
+        // Cleanup temp batch file if it exists
+        if (tempBatchPath) {
+          try {
+            if (fs.existsSync(tempBatchPath)) {
+              fs.unlinkSync(tempBatchPath);
+            }
+          } catch (err) {
+            console.warn('[ShellSessionManager] Failed to cleanup temp batch file:', err);
+          }
+        }
+
         // Check if session still exists (might have been terminated)
         const currentSession = this.sessions.get(sessionId);
         if (!currentSession) {

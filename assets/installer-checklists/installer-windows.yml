@@ -4,49 +4,197 @@
 name: RAVE Installation (Windows)
 
 steps:
-  # Step 1: Check and install R
-  - id: r-language
-    name: R Programming Language
+
+  # Step 0: Check for user-configured R path from r-detector
+  # NOTE: Pure CMD implementation - NO PowerShell used
+  - id: r-detector-path
+    name: Check User-Configured R Path
     type: shell
-    if: |
+    run: |
       @echo off
       setlocal enabledelayedexpansion
       
-      REM Check RSTUDIO_WHICH_R environment variable first
-      if defined RSTUDIO_WHICH_R (
-        if exist "%RSTUDIO_WHICH_R%" exit /b 0
+      REM Get cache directory
+      if not defined RAVE_CACHE_DIR (
+        set "RAVE_CACHE_DIR=%APPDATA%\rave-wasm"
       )
       
-      REM Check registry for R installations (64-bit first, then 32-bit)
-      for %%K in (HKCU HKLM) do (
-        for %%V in (R64 R) do (
-          REM Enumerate version subkeys under R-core\R or R-core\R64
-          for /f "delims=" %%S in ('reg query "%%K\Software\R-core\%%V" 2^>nul ^| findstr "\\R-core\\%%V\\"') do (
-            REM Query InstallPath from the version subkey
-            for /f "tokens=2*" %%a in ('reg query "%%S" /v "InstallPath" 2^>nul ^| findstr "InstallPath"') do (
-              if exist "%%b\bin\x64\R.exe" exit /b 0
-              if exist "%%b\bin\i386\R.exe" exit /b 0
-              if exist "%%b\bin\R.exe" exit /b 0
+      REM Check if user has configured R path via r-detector (stored in config.json)
+      set "R_CONFIG=%RAVE_CACHE_DIR%\config.json"
+      if exist "%R_CONFIG%" (
+        REM Extract rPath from JSON using simple string parsing (no PowerShell)
+        REM Look for "rPath": "path" pattern in config.json
+        for /f "tokens=2 delims=:" %%P in ('findstr /C:"\"rPath\"" "%R_CONFIG%"') do (
+          set "USER_R_PATH=%%P"
+        )
+        
+        REM Clean up quotes and commas from extracted path
+        if defined USER_R_PATH (
+          set "USER_R_PATH=!USER_R_PATH:"=!"
+          set "USER_R_PATH=!USER_R_PATH:,=!"
+          set "USER_R_PATH=!USER_R_PATH: =!"
+          
+          if exist "!USER_R_PATH!" (
+            setx RSTUDIO_WHICH_R "!USER_R_PATH!" >nul 2>&1
+            if not errorlevel 1 (
+              echo RSTUDIO_WHICH_R set to: !USER_R_PATH!
+              exit /b 0
             )
           )
         )
       )
       
-      REM Check common installation locations
-      for %%D in ("C:\R" "%ProgramFiles%\R" "%ProgramFiles(x86)%\R" "%LOCALAPPDATA%\Programs\R") do (
-        if exist "%%~D" (
-          for /d %%R in ("%%~D\R-*") do (
-            if exist "%%R\bin\x64\R.exe" exit /b 0
-            if exist "%%R\bin\i386\R.exe" exit /b 0
-            if exist "%%R\bin\R.exe" exit /b 0
-          )
+      echo No user-configured R path found. Will auto-detect in next step.
+      exit /b 0
+    required: false
+    manualExecute: false
+    timeout: 30000  # 30 seconds
+    description: Check if user has configured R path via r-detector and set environment variable
+
+  # Step 1: Generate R path helper script
+  # NOTE: Pure CMD implementation - NO PowerShell used
+  # Uses echo with redirection to create the batch file
+  - id: r-path-script
+    name: Generate R Path Helper Script
+    type: shell
+    run: |
+      @echo off
+      setlocal enabledelayedexpansion
+      
+      REM Get cache directory from environment or use default
+      if not defined RAVE_CACHE_DIR (
+        set "RAVE_CACHE_DIR=%APPDATA%\rave-wasm"
+      )
+      
+      echo Creating R detection helper script...
+      echo Cache directory: %RAVE_CACHE_DIR%
+      
+      REM Create cache directory if it doesn't exist
+      if not exist "%RAVE_CACHE_DIR%" (
+        mkdir "%RAVE_CACHE_DIR%"
+        if errorlevel 1 (
+          echo ERROR: Failed to create cache directory
+          exit /b 1
         )
       )
       
-      exit /b 1
-    run: echo "Please download and install R from https://cran.r-project.org/bin/windows/base/"
+      REM Create find-r.bat script using pure CMD echo redirection
+      set "SCRIPT_PATH=%RAVE_CACHE_DIR%\find-r.bat"
+      
+      (
+        echo @echo off
+        echo setlocal enabledelayedexpansion
+        echo.
+        echo REM Check RSTUDIO_WHICH_R environment variable first
+        echo if defined RSTUDIO_WHICH_R ^(
+        echo   if exist "%%RSTUDIO_WHICH_R%%" ^(
+        echo     echo %%RSTUDIO_WHICH_R%%
+        echo     exit /b 0
+        echo   ^)
+        echo ^)
+        echo.
+        echo REM Check registry for R installations
+        echo for %%%%K in ^(HKCU HKLM^) do ^(
+        echo   for %%%%V in ^(R R64^) do ^(
+        echo     for /f "tokens=2*" %%%%a in ^('reg query "%%%%K\Software\R-core\%%%%V" /s /v InstallPath 2^^^>nul ^^^| findstr "InstallPath"'^) do ^(
+        echo       set "RPATH=%%%%b"
+        echo       if exist "^!RPATH^!\bin\x64\R.exe" ^(
+        echo         echo ^^!RPATH^^!\bin\x64\R.exe
+        echo         exit /b 0
+        echo       ^)
+        echo       if exist "^!RPATH^!\bin\R.exe" ^(
+        echo         echo ^^!RPATH^^!\bin\R.exe
+        echo         exit /b 0
+        echo       ^)
+        echo     ^)
+        echo   ^)
+        echo ^)
+        echo.
+        echo REM Check common installation locations as fallback
+        echo for %%%%D in ^("%%LOCALAPPDATA%%\Programs\R" "%%ProgramFiles%%\R" "C:\R" "%%ProgramFiles^(x86^)%%\R"^) do ^(
+        echo   if exist "%%%%~D" ^(
+        echo     for /f "tokens=*" %%%%R in ^('dir /b /ad /o-n "%%%%~D\R-*" 2^^^>nul'^) do ^(
+        echo       if exist "%%%%~D\%%%%R\bin\x64\R.exe" ^(
+        echo         echo %%%%~D\%%%%R\bin\x64\R.exe
+        echo         exit /b 0
+        echo       ^)
+        echo       if exist "%%%%~D\%%%%R\bin\R.exe" ^(
+        echo         echo %%%%~D\%%%%R\bin\R.exe
+        echo         exit /b 0
+        echo       ^)
+        echo     ^)
+        echo   ^)
+        echo ^)
+        echo.
+        echo exit /b 1
+      ) > "%SCRIPT_PATH%"
+      
+      if errorlevel 1 (
+        echo ERROR: Failed to write find-r.bat script
+        exit /b 1
+      )
+      
+      REM Verify the script was created successfully
+      if not exist "%SCRIPT_PATH%" (
+        echo ERROR: find-r.bat was not created
+        exit /b 1
+      )
+      
+      REM Verify the script has content (not empty)
+      for %%A in ("%SCRIPT_PATH%") do set "FILE_SIZE=%%~zA"
+      if "%FILE_SIZE%"=="0" (
+        echo ERROR: find-r.bat is empty
+        exit /b 1
+      )
+      
+      echo SUCCESS: Created find-r.bat ^(%FILE_SIZE% bytes^)
+      exit /b 0
+    required: true
+    manualExecute: false
+    timeout: 30000  # 30 seconds
+    description: Create a reusable batch script to find R installation path
+
+  # Step 3: Check and install R
+  - id: r-language
+    name: R Programming Language
+    type: shell
+    run: |
+      @echo off
+      setlocal enabledelayedexpansion
+      
+      REM Get cache directory
+      if not defined RAVE_CACHE_DIR (
+        set "RAVE_CACHE_DIR=%APPDATA%\rave-wasm"
+      )
+      
+      echo Checking for R using helper script...
+      if not exist "%RAVE_CACHE_DIR%\find-r.bat" (
+        echo ERROR: Helper script %RAVE_CACHE_DIR%\find-r.bat not found
+        exit /b 1
+      )
+      
+      REM Try to detect R
+      set "DETECTED_R="
+      
+      REM Use usebackq for better handling of paths with spaces
+      for /f "usebackq delims=" %%R in (`call "%RAVE_CACHE_DIR%\find-r.bat"`) do (
+        set "DETECTED_R=%%R"
+      )
+      
+      if defined DETECTED_R (
+        REM R found, set environment variable for subsequent steps
+        setx RSTUDIO_WHICH_R "!DETECTED_R!" >nul
+        echo R detected at: !DETECTED_R!
+        echo RSTUDIO_WHICH_R environment variable set.
+        exit /b 0
+      ) else (
+        echo R not found.
+        echo Please download and install R from https://cran.r-project.org/bin/windows/base/
+        exit /b 1
+      )
     required: true
     manualExecute: true
+    needs: [r-path-script, r-detector-path]
     timeout: 300000  # 5 minutes
     description: R is required to run RAVE
     manualInstructions: |
@@ -54,49 +202,76 @@ steps:
       https://cran.r-project.org/bin/windows/base/
       
       Follow the installer prompts with default options.
+      After installation, restart this installer.
 
-  # Step 1.5: Install pkgbuild package (for Rtools detection)
+  # Step 4: Install pkgbuild package (for Rtools detection)
   - id: pkgbuild
     name: R Package 'pkgbuild'
-    type: rscript
+    type: shell
     run: |
-      if (!require('pkgbuild', quietly = TRUE)) {
-        install.packages('pkgbuild', repos = 'https://cloud.r-project.org')
-      }
-      cat("\npkgbuild package installed\n")
+      @echo off
+      if not defined RAVE_CACHE_DIR set "RAVE_CACHE_DIR=%APPDATA%\rave-wasm"
+      for /f "usebackq delims=" %%R in (`call "%RAVE_CACHE_DIR%\find-r.bat"`) do set "REXE=%%R"
+      if "%REXE%"=="" (
+        echo ERROR: R not found
+        exit /b 1
+      )
+      "%REXE%" --no-save -e "if (!require('pkgbuild', quietly = TRUE)) { install.packages('pkgbuild', repos = 'https://cloud.r-project.org') }; cat('\npkgbuild package installed\n')"
     required: true
     manualExecute: false
-    needs: [r-language]
+    needs: [r-language, r-path-script]
     timeout: 300000  # 5 minutes
-    description: Install pkgbuild package to detect Rtools availability
+    description: Install pkgbuild package to detect and install Rtools
     manualInstructions: |
       Open R or RStudio and run:
       install.packages('pkgbuild')
 
-  # Step 2: Check and install Rtools
+  # Step 5: Check and install Rtools
   - id: rtools
     name: Rtools for Windows
     type: shell
-    if: Rscript -e "pkgbuild::has_build_tools()" 2>nul | findstr TRUE
-    run: echo "Please download and install Rtools from https://cran.r-project.org/bin/windows/Rtools/"
+    if: |
+      @echo off
+      if not defined RAVE_CACHE_DIR set "RAVE_CACHE_DIR=%APPDATA%\rave-wasm"
+      for /f "usebackq delims=" %%R in (`call "%RAVE_CACHE_DIR%\find-r.bat"`) do set "REXE=%%R"
+      if "%REXE%"=="" exit /b 1
+      "%REXE%" --no-save --slave -e "has_tools <- pkgbuild::has_build_tools(debug = FALSE); cat(if (has_tools) 'RTOOLS_INSTALLED' else 'RTOOLS_MISSING')" 2>nul | findstr /C:"RTOOLS_INSTALLED" >nul
+      if %ERRORLEVEL% EQU 0 (exit /b 0) else (exit /b 1)
+    run: |
+      @echo off
+      echo.
+      echo Rtools is required to compile R packages from source.
+      echo Please download and install Rtools from:
+      echo https://cran.r-project.org/bin/windows/Rtools/
+      echo.
+      echo Choose the version matching your R installation.
+      echo After installation, restart this installer.
+      exit /b 1
     required: true
     manualExecute: true
-    timeout: 300000  # 5 minutes
+    needs: [r-language, r-path-script, r-detector-path, pkgbuild]
+    timeout: 600000  # 10 minutes
     description: Rtools is required to compile R packages from source
     manualInstructions: |
-      Download and install Rtools from:
+      Download and install Rtools manually from:
       https://cran.r-project.org/bin/windows/Rtools/
       
       Choose the version matching your R installation.
       Follow the installer prompts with default options.
-      Restart your computer after installation.
 
-  # Step 3: Check and install RStudio (optional)
+  # Step 6: Check and install RStudio (optional)
   - id: rstudio
     name: RStudio IDE
     type: shell
-    if: test -f "C:\Program Files\RStudio\rstudio.exe"
-    run: echo "Please download and install RStudio from https://posit.co/download/rstudio-desktop/"
+    if: |
+      @echo off
+      if exist "C:\Program Files\RStudio\rstudio.exe" exit /b 0
+      if exist "C:\Program Files\Posit\RStudio\rstudio.exe" exit /b 0
+      exit /b 1
+    run: |
+      @echo off
+      echo Please download and install RStudio from https://posit.co/download/rstudio-desktop/
+      exit /b 0
     required: false
     manualExecute: true
     timeout: 300000  # 5 minutes
@@ -107,18 +282,22 @@ steps:
       
       Follow the installer prompts with default options.
 
-  # Step 4: Install RAVE packages
+  # Step 7: Install RAVE packages
   - id: rave-packages
     name: RAVE Packages
-    type: rscript
+    type: shell
     run: |
-      options(repos = c(RAVE = 'https://rave-ieeg.r-universe.dev', CRAN = 'https://cloud.r-project.org'))
-      install.packages('ravemanager')
-      ravemanager::install()
-      cat("\nINSTALLATION_COMPLETE\n")
+      @echo off
+      if not defined RAVE_CACHE_DIR set "RAVE_CACHE_DIR=%APPDATA%\rave-wasm"
+      for /f "usebackq delims=" %%R in (`call "%RAVE_CACHE_DIR%\find-r.bat"`) do set "REXE=%%R"
+      if "%REXE%"=="" (
+        echo ERROR: R not found
+        exit /b 1
+      )
+      "%REXE%" --no-save -e "install.packages('ravemanager', repos = c('rave-ieeg' = 'https://rave-ieeg.r-universe.dev', CRAN = 'https://cloud.r-project.org')); ravemanager::install(); cat('\nINSTALLATION_COMPLETE\n')"
     required: true
     manualExecute: false
-    needs: [r-language, pkgbuild, rtools]
+    needs: [r-language, r-path-script, r-detector-path, pkgbuild, rtools]
     timeout: 1800000  # 30 minutes
     description: RAVE packages for electrophysiology data analysis
     manualInstructions: |
