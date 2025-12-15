@@ -308,6 +308,9 @@ if (file.exists(metadata_path)) {
     if (length(preload_assets) > 0) {
       for (asset_path in preload_assets) {
         full_path <- file.path("assets", asset_path)
+        if(!file.exists(full_path)) {
+          full_path <- file.path("site", asset_path)
+        }
         if (dir.exists(full_path)) {
           # It's a directory - list all files recursively
           files <- list.files(full_path, recursive = TRUE, full.names = FALSE)
@@ -337,13 +340,6 @@ if (file.exists(metadata_path)) {
                     app_name, length(pkg_paths_to_preload), length(asset_paths_to_preload)))
   }
   
-  # Also write a global preload manifest with all packages (for service worker)
-  global_manifest <- list(
-    cache_version = cache_version,
-    packages = unname(as.list(all_pkg_paths))
-  )
-  jsonlite::write_json(global_manifest, "site/shinylive/preload-manifest.json", auto_unbox = TRUE, pretty = TRUE)
-  message(sprintf("  Generated global preload manifest: %d packages", length(all_pkg_paths)))
 } else {
   warning("metadata.rds not found - skipping preload manifest generation")
   cache_version <- "v1"

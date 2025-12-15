@@ -8,11 +8,11 @@ app_citation: ~
 # Set to empty list [] to disable preloading.
 # Set to list of package names to preload specific packages only.
 preload_packages: ~
-  # - threeBrain
-  # - dipsaus
-  # - shiny
+  - threeBrain
+  - dipsaus
+  - shiny
 
 # Additional static assets to preload (paths relative to site/).
 # Useful for large data files like brain models.
-preload_assets: ~
-  # - app-data/freesurfer-models/fsaverage/
+preload_assets:
+  - shinylive/webr/

@@ -22,4 +22,9 @@ app_citation: ~
 # Packages to preload in browser cache before app starts.
 # Set to null or omit to preload all packages.
 # Set to empty list [] to disable preloading.
-preload_packages: ~
+preload_packages: 
+  - threeBrain
+  - dipsaus
+  - shiny
+preload_assets:
+  - shinylive/webr/
