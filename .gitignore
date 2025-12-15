@@ -16,3 +16,12 @@ tmp_www
 r_output.txt
 test-output.txt
 test.bat
+
+# Pandoc WASM assets
+# Ignore large binary downloaded from web
+assets/pandoc/pandoc.wasm
+
+# Ignore 3rd-party shim files copied from node_modules
+assets/pandoc/*
+!assets/pandoc/pandoc-integration.js
+!assets/pandoc/pandoc-main.js
