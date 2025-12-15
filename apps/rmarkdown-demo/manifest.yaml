@@ -2,6 +2,5 @@ app_title: RMarkdown Demo
 preload_packages:
   - knitr
   - shiny
-preload_assets:
-  - pandoc/
+preload_assets: ~
 include_www: no
