@@ -36,6 +36,7 @@
     "mime-types": "^2.1.35"
   },
   "devDependencies": {
+    "@bjorn3/browser_wasi_shim": "^0.4.2",
     "@electron/notarize": "^2.2.1",
     "electron": "^35.7.5",
     "electron-builder": "^24.9.1"

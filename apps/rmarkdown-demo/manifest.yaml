@@ -1,0 +1,14 @@
+app_title: RMarkdown Demo
+preload_packages:
+  - knitr
+  - rmarkdown
+  - yaml
+  - xfun
+  - evaluate
+  - highr
+  - mime
+  - stringi
+  - stringr
+  - magrittr
+preload_assets:
+  - pandoc

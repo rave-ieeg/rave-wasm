@@ -46,6 +46,149 @@ jsonlite::write_json(
   )
 )
 
+# ---- Step 2b: Prepare pandoc-wasm --------------------------------------------
+pandoc_assets_dir <- "assets/pandoc"
+dir.create(pandoc_assets_dir, showWarnings = FALSE, recursive = TRUE)
+
+# Download pandoc.wasm
+pandoc_wasm_url <- "https://haskell-wasm.github.io/pandoc-wasm/pandoc.wasm"
+pandoc_wasm_path <- file.path(pandoc_assets_dir, "pandoc.wasm")
+if(!file.exists(pandoc_wasm_path)) {
+  message("Downloading pandoc.wasm...")
+  download.file(pandoc_wasm_url, pandoc_wasm_path, mode = "wb", quiet = TRUE)
+}
+
+# Copy browser_wasi_shim files from node_modules
+shim_src_dir <- "node_modules/@bjorn3/browser_wasi_shim/dist"
+if(dir.exists(shim_src_dir)) {
+  shim_files <- list.files(shim_src_dir, full.names = TRUE)
+  file.copy(shim_files, pandoc_assets_dir, overwrite = TRUE)
+  message("Copied browser_wasi_shim files from node_modules")
+} else {
+  warning("browser_wasi_shim not found in node_modules. Please run 'npm install'")
+}
+
+# Write pandoc-main.js
+pandoc_main_js_path <- file.path(pandoc_assets_dir, "pandoc-main.js")
+# Always overwrite to ensure correct import
+pandoc_main_js_content <- '
+import {
+  WASI,
+  OpenFile,
+  File,
+  ConsoleStdout,
+  PreopenDirectory,
+} from "./index.js";
+
+const args = ["pandoc.wasm", "+RTS", "-H64m", "-RTS"];
+const env = [];
+const in_file = new File(new Uint8Array(), { readonly: true });
+const out_file = new File(new Uint8Array(), { readonly: false });
+
+// Keep references to FDs to reset them
+const stdin_fd = new OpenFile(in_file);
+const stdout_fd = new OpenFile(out_file);
+
+const fds = [
+  stdin_fd,
+  stdout_fd,
+  ConsoleStdout.lineBuffered((msg) => console.warn(`[WASI stderr] ${msg}`)),
+  new PreopenDirectory("/", [
+    ["in", in_file],
+    ["out", out_file],
+  ]),
+];
+const options = { debug: false };
+const wasi = new WASI(args, env, fds, options);
+
+const { instance } = await WebAssembly.instantiateStreaming(
+  fetch(new URL("./pandoc.wasm", import.meta.url)),
+  {
+    wasi_snapshot_preview1: wasi.wasiImport,
+  }
+);
+
+wasi.initialize(instance);
+instance.exports.__wasm_call_ctors();
+
+function memory_data_view() {
+  return new DataView(instance.exports.memory.buffer);
+}
+
+const argc_ptr = instance.exports.malloc(4);
+memory_data_view().setUint32(argc_ptr, args.length, true);
+const argv = instance.exports.malloc(4 * (args.length + 1));
+for (let i = 0; i < args.length; ++i) {
+  const arg = instance.exports.malloc(args[i].length + 1);
+  new TextEncoder().encodeInto(
+    args[i],
+    new Uint8Array(instance.exports.memory.buffer, arg, args[i].length)
+  );
+  memory_data_view().setUint8(arg + args[i].length, 0);
+  memory_data_view().setUint32(argv + 4 * i, arg, true);
+}
+memory_data_view().setUint32(argv + 4 * args.length, 0, true);
+const argv_ptr = instance.exports.malloc(4);
+memory_data_view().setUint32(argv_ptr, argv, true);
+
+instance.exports.hs_init_with_rtsopts(argc_ptr, argv_ptr);
+
+export function pandoc(args_str, in_str) {
+  const args_ptr = instance.exports.malloc(args_str.length);
+  new TextEncoder().encodeInto(
+    args_str,
+    new Uint8Array(instance.exports.memory.buffer, args_ptr, args_str.length)
+  );
+  in_file.data = new TextEncoder().encode(in_str);
+  out_file.data = new Uint8Array();
+  stdin_fd.filePos = 0n;
+  stdout_fd.filePos = 0n;
+  
+  instance.exports.wasm_main(args_ptr, args_str.length);
+  return new TextDecoder("utf-8", { fatal: true }).decode(out_file.data);
+}
+'
+writeLines(pandoc_main_js_content, pandoc_main_js_path)
+
+# Write pandoc-integration.js
+pandoc_integration_js_path <- file.path(pandoc_assets_dir, "pandoc-integration.js")
+# Always overwrite
+pandoc_integration_js_content <- '
+import { pandoc } from "./pandoc-main.js";
+
+window.pandoc = pandoc;
+
+if (window.Shiny) {
+  Shiny.addCustomMessageHandler("rave_pandoc_convert", (message) => {
+    const { markdown, outputId, args } = message;
+    try {
+      let cmd = args || "-f markdown -t html --mathjax";
+      // Strip "pandoc" from the beginning if present
+      cmd = cmd.replace(/^pandoc\\s+/, "");
+      
+      const html = pandoc(cmd, markdown);
+      const el = document.getElementById(outputId);
+      if (el) {
+        el.innerHTML = html;
+        // Trigger MathJax if available
+        if (window.MathJax && window.MathJax.typesetPromise) {
+          window.MathJax.typesetPromise([el]);
+        }
+      }
+    } catch (e) {
+      console.error("Pandoc conversion failed:", e);
+      const el = document.getElementById(outputId);
+      if (el) {
+        el.innerHTML = `<div style="color:red">Pandoc Error: ${e.message}</div>`;
+      }
+    }
+  });
+}
+'
+writeLines(pandoc_integration_js_content, pandoc_integration_js_path)
+
+message("  Prepared pandoc-wasm in assets/")
+
 # ---- Step 3: build site/ -----------------------------------------------------
 # Remove site folder to avoid old files
 if(!use_cache) {
@@ -443,6 +586,9 @@ if (dir.exists(freesurfer_models_dir)) {
     }
   }
 }
+
+
+
 
 
 # ---- Step 6: include static assets -------------------------------------------
