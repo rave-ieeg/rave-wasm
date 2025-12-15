@@ -1,3 +1,4 @@
+source("www/r/common.r", local = FALSE, chdir = FALSE)
 library(shiny)
 library(knitr)
 

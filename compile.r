@@ -202,37 +202,142 @@ app_names <- app_names[!app_names %in% c("shinylive", "shinylive-sw")]
 
 shared_path <- fs::path_abs("./www")
 apps <- lapply(app_names, function(app_name) {
-  share_link <- file.path("./apps", app_name, "www")
-  has_link <- fs::link_exists(share_link)
-  if(has_link && !fs::path_rel(shared_path, start = fs::link_path(share_link)) != ".") {
-    has_link <- FALSE
-  }
-  if(!has_link) {
-    if(file.exists(share_link)) {
-      unlink(share_link, recursive = TRUE)
-    }
-    
-    fs::link_create(shared_path, 
-                    normalizePath(share_link, winslash = "/", mustWork = FALSE),
-                    symbolic = TRUE)
-  }
-  # get app title, preload_packages, and preload_assets from manifest
+  app_www_path <- file.path("./apps", app_name, "www")
+  
+  # get app title, preload_packages, preload_assets, and include_www from manifest
   app_title <- NULL
   preload_packages <- NULL
   preload_assets <- NULL
+  include_www <- TRUE  # default to TRUE for backward compatibility
   meta_file <- file.path("./apps", app_name, "manifest.yaml")
   if(file.exists(meta_file)) {
     meta_info <- yaml::read_yaml(meta_file)
     app_title <- meta_info$app_title
     preload_packages <- meta_info$preload_packages
     preload_assets <- meta_info$preload_assets
+    if(!is.null(meta_info$include_www)) {
+      include_www <- meta_info$include_www
+    }
   }
+  
+  # Remove existing www folder in app
+  if(file.exists(app_www_path)) {
+    unlink(app_www_path, recursive = TRUE)
+  }
+  
+  # Handle include_www based on its value
+  if(isFALSE(include_www)) {
+    # Create blank www folder
+    dir.create(app_www_path, showWarnings = FALSE, recursive = TRUE)
+    message(sprintf("  Created blank www folder for %s", app_name))
+  } else if(isTRUE(include_www)) {
+    # Copy entire www folder
+    dir.create(app_www_path, showWarnings = FALSE, recursive = TRUE)
+    www_files <- list.files(shared_path, recursive = TRUE, all.files = TRUE, no.. = TRUE)
+    for(www_file in www_files) {
+      src <- file.path(shared_path, www_file)
+      dest <- file.path(app_www_path, www_file)
+      dest_dir <- dirname(dest)
+      if(!dir.exists(dest_dir)) {
+        dir.create(dest_dir, showWarnings = FALSE, recursive = TRUE)
+      }
+      if(file.info(src)$isdir) {
+        dir.create(dest, showWarnings = FALSE, recursive = TRUE)
+      } else {
+        file.copy(src, dest, overwrite = TRUE)
+      }
+    }
+    message(sprintf("  Copied entire www folder for %s", app_name))
+  } else if(is.character(include_www) || is.list(include_www)) {
+    # Copy specific files/folders
+    dir.create(app_www_path, showWarnings = FALSE, recursive = TRUE)
+    include_list <- unlist(include_www)
+    for(item in include_list) {
+      src_path <- file.path(shared_path, item)
+      dest_path <- file.path(app_www_path, item)
+      
+      if(dir.exists(src_path)) {
+        # It's a directory - copy recursively
+        dir.create(dirname(dest_path), showWarnings = FALSE, recursive = TRUE)
+        if(!dir.exists(dest_path)) {
+          dir.create(dest_path, showWarnings = FALSE, recursive = TRUE)
+        }
+        www_files <- list.files(src_path, recursive = TRUE, all.files = TRUE, no.. = TRUE)
+        for(www_file in www_files) {
+          src <- file.path(src_path, www_file)
+          dest <- file.path(dest_path, www_file)
+          dest_dir <- dirname(dest)
+          if(!dir.exists(dest_dir)) {
+            dir.create(dest_dir, showWarnings = FALSE, recursive = TRUE)
+          }
+          if(file.info(src)$isdir) {
+            dir.create(dest, showWarnings = FALSE, recursive = TRUE)
+          } else {
+            file.copy(src, dest, overwrite = TRUE)
+          }
+        }
+      } else if(file.exists(src_path)) {
+        # It's a file - copy it
+        dest_dir <- dirname(dest_path)
+        if(!dir.exists(dest_dir)) {
+          dir.create(dest_dir, showWarnings = FALSE, recursive = TRUE)
+        }
+        file.copy(src_path, dest_path, overwrite = TRUE)
+      } else {
+        warning(sprintf("  www item not found: %s (for app %s)", item, app_name))
+      }
+    }
+    message(sprintf("  Copied selected www items for %s: %s", app_name, paste(include_list, collapse = ", ")))
+  }
+
+  # Always copy build-manifest.json
+  build_manifest_src <- file.path(shared_path, "build-manifest.json")
+  if(file.exists(build_manifest_src)) {
+    file.copy(build_manifest_src, file.path(app_www_path, "build-manifest.json"), overwrite = TRUE)
+  }
+  # Always copy r/common.r
+  build_common_r <- file.path(shared_path, "r", "common.r")
+  if(file.exists(build_common_r)) {
+    dir.create(file.path(app_www_path, "r"), showWarnings = FALSE, recursive = TRUE)
+    file.copy(build_common_r, file.path(app_www_path, "r", "common.r"), overwrite = TRUE)
+  }
+
   if(!length(app_title)) {
     app_title <- strsplit(app_name, "-", fixed = TRUE)[[1]]
     substr(app_title, start = 1, stop = 1) <- toupper(substr(app_title, start = 1, stop = 1))
   }
   app_title <- paste(app_title, collapse = " ")
   
+  # First export: isolated packages to build/apps/{app_name} for app-specific metadata
+  isolated_build_dir <- file.path("build/apps", app_name)
+  isolated_metadata <- file.path(isolated_build_dir, "shinylive/webr/packages/metadata.rds")
+  if(!use_cache || !file.exists(isolated_metadata)) {
+    if(dir.exists(isolated_build_dir)) {
+      unlink(isolated_build_dir, recursive = TRUE)
+    }
+    dir.create(isolated_build_dir, showWarnings = FALSE, recursive = TRUE)
+    
+    shinylive::export(
+      template_params = list(
+        title = app_title
+      ),
+      appdir = file.path("apps", app_name),
+      destdir = isolated_build_dir,
+      subdir = "app",
+      package_cache = FALSE,  # Don't use cache - get fresh dependency tree
+      assets_version = shinylive_asset_version
+    )
+  }
+  
+  # Copy app-specific metadata.rds to apps/{app_name}/
+  if(file.exists(isolated_metadata)) {
+    file.copy(isolated_metadata, file.path("apps", app_name, "metadata.rds"), overwrite = TRUE)
+    message(sprintf("  Generated app-specific metadata for %s", app_name))
+  } else {
+    warning(sprintf("  No isolated metadata generated for %s", app_name))
+  }
+
+  # Second export: shared packages to site/
   shinylive::export(
     template_params = list(
       title = app_title
@@ -243,6 +348,7 @@ apps <- lapply(app_names, function(app_name) {
     package_cache = TRUE,
     assets_version = shinylive_asset_version
   )
+  
   # Ensure service worker path works when the app is hosted in a sub-path.
   # Insert the meta tag right after the first <head> tag in the generated index.html
   index_path <- file.path("site", app_name, "index.html")
@@ -409,6 +515,59 @@ old_func <- 'async function runExportedApp({'
 if(!any(grepl("_prefetchPackages = \\(async", shinylive_js, perl = TRUE))) {
   shinylive_js <- gsub(old_func, prefetch_code, shinylive_js, fixed = TRUE)
 }
+
+# Modify .mount_vfs_images() call site to pass appName
+shinylive_js <- gsub(
+  '  .mount_vfs_images()',
+  r'(
+
+.mount_vfs_images_injected <- function(appDir = NULL) {
+  metadata_path <- file.path(appDir, "metadata.rds")
+  
+  if (file.exists(metadata_path)) {
+    metadata <- readRDS(metadata_path)
+    lapply(metadata, function(data) {
+      name <- data$name
+      path <- data$path
+      available <- data$cached && length(data$assets) > 0
+      mountpoint <- glue::glue("/shinylive/webr/packages/{name}")
+
+      try({
+        # Mount the virtual filesystem image, unless we already have done so
+        if (available && !file.exists(mountpoint)) {
+          tryCatch({
+            webr::mount(mountpoint, glue::glue("{.base_url}{path}"))
+          }, error = function(cnd) {
+            # File extraction fallback for .tgz with no filesystem metadata
+            if (grepl(".tgz$", path)) {
+              .install_pkg_tgz(path, "/shinylive/webr/packages/")
+            } else {
+              stop(cnd)
+            }
+          })
+        }
+
+        # If this is a full library, add it to .libPaths()
+        if(data$type == "library") {
+          paths <- .libPaths()
+          paths <- append(paths, mountpoint , after = length(paths) - 1)
+          .libPaths(paths)
+        }
+      })
+    })
+  }
+
+  # Warm package cache with installed packages
+  lapply(rownames(installed.packages()), function(p) { .webr_pkg_cache[[p]] <<- TRUE })
+}
+
+.mount_vfs_images_injected(appDir)
+
+  )',
+  shinylive_js, fixed = TRUE
+)
+
+message("  Modified .mount_vfs_images() to use app-specific metadata")
 
 writeLines(shinylive_js, './site/shinylive/shinylive.js', sep = "\n")
 

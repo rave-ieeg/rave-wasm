@@ -1,3 +1,4 @@
+source("www/r/common.r", local = FALSE, chdir = FALSE)
 if(dipsaus::rs_avail() && !is.na(dipsaus::rs_active_project())) {
   local({
     ctx <- rstudioapi::getSourceEditorContext()

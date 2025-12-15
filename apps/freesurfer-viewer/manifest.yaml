@@ -26,5 +26,8 @@ preload_packages:
   - threeBrain
   - dipsaus
   - shiny
-preload_assets:
-  - shinylive/webr/
+  - oro.nifti
+  - freesurferformats
+preload_assets: ~
+include_www: 
+  - r/shiny-helper.r

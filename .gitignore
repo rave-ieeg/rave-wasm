@@ -16,6 +16,7 @@ tmp_www
 r_output.txt
 test-output.txt
 test.bat
+build/apps
 
 # Pandoc WASM assets
 # Ignore large binary downloaded from web

@@ -4,4 +4,4 @@ preload_packages:
   - shiny
 preload_assets:
   - pandoc/
-  - shinylive/webr/
+include_www: no

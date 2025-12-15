@@ -1,3 +1,4 @@
+source("www/r/common.r", local = FALSE, chdir = FALSE)
 source("www/r/shiny-helper.r", local = TRUE, chdir = FALSE)
 
 ui <- bslib_page_template(
