@@ -87,7 +87,7 @@ jobs:
             pak::pak(c(
               "posit-dev/r-shinylive", "yaml", "fs", "shiny", "bslib", "htmltools", 
               "bidsr", "dipsaus", "filearray", "ieegio", "ravecore", "ravedash", 
-              "ravepipeline", "ravetools", "readNSx", "rpyANTs", "rpymat", "shidashi", "threeBrain"
+              "ravepipeline", "ravetools", "readNSx", "rpyANTs", "rpymat", "shidashi", "threeBrain",
               "rave", "rutabaga", "ravebuiltins"
             ))
           '
